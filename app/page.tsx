@@ -1,69 +1,262 @@
-import Image from "next/image";
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import { useTasteStore } from '@/lib/store/tasteStore';
+import { tmdb } from '@/lib/tmdb/client';
+import { webllmEngine } from '@/lib/webllm/engine';
+import { Movie, WebLLMProgress, DeviceMode } from '@/lib/tmdb/types';
+
+// Components
+import { Header } from '@/components/common/Header';
+import { SettingsModal } from '@/components/common/SettingsModal';
+import { TasteProfilerModal } from '@/components/onboarding/TasteProfilerModal';
+import { TrailerModal } from '@/components/movie/TrailerModal';
+import { TwentyQuestionsMode } from '@/components/modes/TwentyQuestionsMode';
+import { ChatMode } from '@/components/modes/ChatMode';
+import { ShelfMode } from '@/components/modes/ShelfMode';
+
+// Layouts
+import { MobileLayout } from '@/components/layout/MobileLayout';
+import { TabletLayout } from '@/components/layout/TabletLayout';
+import { DesktopLayout } from '@/components/layout/DesktopLayout';
 
 export default function Home() {
+  const store = useTasteStore();
+  const [selectedTrailerMovie, setSelectedTrailerMovie] = useState<Movie | null>(null);
+  const [isTrailerOpen, setIsTrailerOpen] = useState(false);
+  const [isTasteProfilerOpen, setIsTasteProfilerOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [seedMovies, setSeedMovies] = useState<Movie[]>([]);
+  const [geminiApiKey, setGeminiApiKey] = useState('');
+
+  // WebLLM Loading Progress State
+  const [webllmProgress, setWebllmProgress] = useState<WebLLMProgress>({
+    progress: 0,
+    text: 'Initializing...',
+    isLoaded: false,
+    isLoading: true,
+  });
+
+  // Responsive device detector
+  const [detectedLayout, setDetectedLayout] = useState<'mobile' | 'tablet' | 'desktop'>('desktop');
+
+  useEffect(() => {
+    // Load seeds
+    const seeds = tmdb.getSeedMovies();
+    setSeedMovies(seeds);
+
+    // Restore Gemini Key if saved
+    const savedGemini = localStorage.getItem('movielapse_gemini_api_key') || '';
+    if (savedGemini) {
+      setGeminiApiKey(savedGemini);
+      webllmEngine.setGeminiApiKey(savedGemini);
+    }
+
+    // Responsive screen detection
+    const handleResize = () => {
+      const w = window.innerWidth;
+      if (w < 768) setDetectedLayout('mobile');
+      else if (w < 1024) setDetectedLayout('tablet');
+      else setDetectedLayout('desktop');
+    };
+
+    handleResize();
+    window.addEventListener('resize', handleResize);
+
+    // Listen to WebLLM Progress
+    webllmEngine.setProgressCallback((p) => {
+      setWebllmProgress(p);
+    });
+
+    // Start loading WebLLM engine
+    webllmEngine.initEngine().catch(() => {});
+
+    // User lands directly on the Movie Vault (Cine-Shelf)
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
+  }, []);
+
+  const handleSaveGemini = (key: string) => {
+    setGeminiApiKey(key);
+    localStorage.setItem('movielapse_gemini_api_key', key);
+    webllmEngine.setGeminiApiKey(key);
+  };
+
+  const handlePlayTrailer = async (movie: Movie) => {
+    setSelectedTrailerMovie(movie);
+    setIsTrailerOpen(true);
+
+    // If movie doesn't have a trailer key or needs full video key resolution, fetch live
+    if (!movie.trailer_key && movie.id) {
+      try {
+        const full = await tmdb.getMovieDetails(movie.id);
+        if (full && full.trailer_key) {
+          setSelectedTrailerMovie(full);
+        }
+      } catch (e) {
+        console.warn('Failed to load dynamic trailer', e);
+      }
+    }
+  };
+
+  const activeEffectiveLayout: 'mobile' | 'tablet' | 'desktop' =
+    store.deviceMode === 'auto' ? detectedLayout : store.deviceMode;
+
+  const ratedCount =
+    store.watched.length +
+    store.loved.length +
+    store.okay.length +
+    store.disliked.length +
+    store.watchlist.length;
+
+  // Track all touched movie IDs so Taste Profiler never repeats movies
+  const ratedIds = [
+    ...store.watched.map((m) => m.id),
+    ...store.loved.map((m) => m.id),
+    ...store.okay.map((m) => m.id),
+    ...store.disliked.map((m) => m.id),
+    ...store.watchlist.map((m) => m.id),
+    ...store.skippedIds,
+    ...store.cantRememberIds,
+  ];
+
+  // Render the current active mode content
+  const renderModeContent = () => {
+    switch (store.appMode) {
+      case 'twenty_questions':
+        return (
+          <TwentyQuestionsMode
+            onPlayTrailer={handlePlayTrailer}
+            onLove={store.markLoved}
+            onDislike={store.markDisliked}
+            onWatchlist={store.markWatchlist}
+            lovedMovies={store.loved}
+            dislikedMovies={store.disliked}
+            watchlistMovies={store.watchlist}
+            tasteSummaryPrompt={store.getTasteSummaryPrompt()}
+          />
+        );
+      case 'chat':
+        return (
+          <ChatMode
+            onPlayTrailer={handlePlayTrailer}
+            onLove={store.markLoved}
+            onDislike={store.markDisliked}
+            onWatchlist={store.markWatchlist}
+            lovedMovies={store.loved}
+            dislikedMovies={store.disliked}
+            watchlistMovies={store.watchlist}
+            tasteSummaryPrompt={store.getTasteSummaryPrompt()}
+          />
+        );
+      case 'shelf':
+      default:
+        return (
+          <ShelfMode
+            onPlayTrailer={handlePlayTrailer}
+            onLove={store.markLoved}
+            onDislike={store.markDisliked}
+            onWatchlist={store.markWatchlist}
+            lovedMovies={store.loved}
+            dislikedMovies={store.disliked}
+            watchlistMovies={store.watchlist}
+            allSeedMovies={seedMovies}
+          />
+        );
+    }
+  };
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+    <div className="min-h-screen bg-neutral-950 text-neutral-100 font-sans selection:bg-amber-500 selection:text-neutral-950">
+      {/* Top Universal App Header */}
+      <Header
+        appMode={store.appMode}
+        onSelectAppMode={store.setAppMode}
+        deviceMode={store.deviceMode}
+        onSelectDeviceMode={store.setDeviceMode}
+        webllmProgress={webllmProgress}
+        lovedCount={store.loved.length}
+        onOpenTasteProfiler={() => setIsTasteProfilerOpen(true)}
+        onOpenSettings={() => setIsSettingsOpen(true)}
+      />
+
+      {/* Render Device-Specific Layout */}
+      {activeEffectiveLayout === 'mobile' && (
+        <MobileLayout
+          appMode={store.appMode}
+          onSelectAppMode={store.setAppMode}
+          lovedCount={store.loved.length}
+          onOpenTasteProfiler={() => setIsTasteProfilerOpen(true)}
+        >
+          {renderModeContent()}
+        </MobileLayout>
+      )}
+
+      {activeEffectiveLayout === 'tablet' && (
+        <TabletLayout
+          appMode={store.appMode}
+          onSelectAppMode={store.setAppMode}
+          seedMovies={seedMovies}
+          lovedMovies={store.loved}
+          watchlistMovies={store.watchlist}
+          onPlayTrailer={handlePlayTrailer}
+          onLove={store.markLoved}
+          onDislike={store.markDisliked}
+          onWatchlist={store.markWatchlist}
+        >
+          {renderModeContent()}
+        </TabletLayout>
+      )}
+
+      {activeEffectiveLayout === 'desktop' && (
+        <DesktopLayout>
+          {renderModeContent()}
+        </DesktopLayout>
+      )}
+
+      {/* Trailer Player Overlay Modal */}
+      <TrailerModal
+        movie={selectedTrailerMovie}
+        isOpen={isTrailerOpen}
+        onClose={() => setIsTrailerOpen(false)}
+      />
+
+      {/* Interactive Taste Profiler Onboarding */}
+      <TasteProfilerModal
+        isOpen={isTasteProfilerOpen}
+        onClose={() => setIsTasteProfilerOpen(false)}
+        movies={seedMovies}
+        ratedIds={ratedIds}
+        webllmProgress={webllmProgress}
+        onWatched={store.markWatched}
+        onLove={store.markLoved}
+        onOkay={store.markOkay}
+        onDislike={store.markDisliked}
+        onWatchlist={store.markWatchlist}
+        onCantRemember={store.markCantRemember}
+        onSkip={store.markSkipped}
+        ratedCount={ratedCount}
+        onInstantReady={() => webllmEngine.enableFallback()}
+        onRetryDownload={() => webllmEngine.initEngine()}
+      />
+
+      {/* Settings Modal */}
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        tmdbApiKey={store.tmdbApiKey}
+        onSaveTmdbKey={store.setTmdbApiKey}
+        geminiApiKey={geminiApiKey}
+        onSaveGeminiKey={handleSaveGemini}
+        onClearTaste={store.clearAll}
+        currentModel={webllmEngine.getCurrentModel()}
+        onSelectModel={(modelId) => {
+          webllmEngine.initEngine(modelId);
+          setIsSettingsOpen(false);
+        }}
+      />
     </div>
   );
 }
