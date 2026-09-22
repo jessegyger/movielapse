@@ -31,6 +31,8 @@ import {
   generateDynamicQuestion,
   getNarrowingInsight,
   markRelatedAskedIds,
+  filterPoolByHistory,
+  hasHardDiscoverFilters,
   ActorCandidate,
   POPULAR_STUDIOS,
   MUTUAL_EXCLUSIONS,
@@ -150,18 +152,25 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
 
   // ── ACTIVE NARROWING: Dynamically narrows candidate pool down to top matches! ──
   const qualifyingScored = useMemo(() => {
-    if (questionCount === 0 && !activeStudioPill && !activeEraPill && clueMatches.size === 0) {
-      return scoredPool;
-    }
-    if (scoredPool.length === 0) return [];
+    // Hard drop movies that contradict Yes/No answers (Akinator constraints)
+    const constrainedMovies = filterPoolByHistory(
+      scoredPool.map((s) => s.movie),
+      history
+    );
+    const constrainedIds = new Set(constrainedMovies.map((m) => String(m.id)));
+    const basePool =
+      constrainedMovies.length > 0
+        ? scoredPool.filter((s) => constrainedIds.has(String(s.movie.id)))
+        : scoredPool;
 
-    const topScore = scoredPool[0]?.score ?? 0;
+    if (questionCount === 0 && !activeStudioPill && !activeEraPill && clueMatches.size === 0) {
+      return basePool;
+    }
+    if (basePool.length === 0) return [];
+
+    const topScore = basePool[0]?.score ?? 0;
     
     // Adaptive narrowing: as questions progress, candidates must stay within a percentage of the leader
-    // Q1-3: within 70% or >= 1.0
-    // Q4-10: within 55% of leader or >= 3.0
-    // Q11-20: within 45% of leader or >= 6.0
-    // Q20+: within 35% of leader or >= 8.0
     let leaderRatio = 0.70;
     let minBase = 1.0;
     if (questionCount >= 20) {
@@ -176,13 +185,8 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
     }
 
     const threshold = Math.max(minBase, topScore * leaderRatio);
-    const filtered = scoredPool.filter((s) => s.score >= threshold);
+    const filtered = basePool.filter((s) => s.score >= threshold);
 
-    // Limit maximum candidates shown as questions advance so user is never stuck looking at 200 items:
-    // Q1-5: up to 100
-    // Q6-12: up to 50
-    // Q13-19: up to 25
-    // Q20+: up to 12
     let maxToShow = 100;
     if (questionCount >= 20) maxToShow = 15;
     else if (questionCount >= 12) maxToShow = 30;
@@ -191,8 +195,8 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
     if (filtered.length > 0) {
       return filtered.slice(0, maxToShow);
     }
-    return scoredPool.slice(0, Math.min(8, maxToShow));
-  }, [scoredPool, questionCount, activeStudioPill, activeEraPill, clueMatches]);
+    return basePool.slice(0, Math.min(8, maxToShow));
+  }, [scoredPool, questionCount, activeStudioPill, activeEraPill, clueMatches, history]);
 
   // Filter within current results for quick title testing
   const displayedCandidates = useMemo(() => {
@@ -232,20 +236,47 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
       setIsQueryingTMDb(true);
       setCurrentPage(1);
 
-      const liveDiscovered = await queryLiveTMDbDiscover(updatedFilters, 2, 1);
+      const liveDiscovered = await queryLiveTMDbDiscover(updatedFilters, 3, 1);
+      const hard = hasHardDiscoverFilters(updatedFilters);
 
-      const updatedMap = new Map(allMovies);
-      liveDiscovered.forEach((m) => updatedMap.set(String(m.id), m));
-      setAllMovies(updatedMap);
+      let workingMap: Map<string, Movie>;
+      if (hard && liveDiscovered.length > 0) {
+        // REPLACE the pool when studio/genre/era filters are on (Disney pill must actually change results)
+        workingMap = new Map();
+        liveDiscovered.forEach((m) => workingMap.set(String(m.id), m));
+        // Keep user clue hits even if outside this discover page
+        updatedClueMatches.forEach((id) => {
+          const existing = allMovies.get(id);
+          if (existing) workingMap.set(id, existing);
+        });
+      } else if (hard && liveDiscovered.length === 0) {
+        // Discover returned nothing — keep prior pool but still rescore against history
+        workingMap = new Map(allMovies);
+      } else {
+        // Soft merge when still exploring broadly
+        workingMap = new Map(allMovies);
+        liveDiscovered.forEach((m) => workingMap.set(String(m.id), m));
+      }
 
-      const scored = scoreAllMovies(Array.from(updatedMap.values()), updatedHistory, updatedClueMatches);
+      setAllMovies(workingMap);
+
+      const constrained = filterPoolByHistory(Array.from(workingMap.values()), updatedHistory);
+      const scored = scoreAllMovies(
+        constrained.length > 0 ? constrained : Array.from(workingMap.values()),
+        updatedHistory,
+        updatedClueMatches
+      );
       setScoredPool(scored);
       setIsQueryingTMDb(false);
 
-      // 1. Free smart brain: openers → cluster forks from remaining set → bank
-      let nextQ = selectSmartNextQuestion(scored, updatedAskedIds, eraAnswered, newCount);
+      let nextQ = selectSmartNextQuestion(
+        scored,
+        updatedAskedIds,
+        eraAnswered,
+        newCount,
+        updatedHistory
+      );
 
-      // 2. If exhausted, generate on-the-fly dynamic question from top narrowed contenders
       if (!nextQ) {
         const topScore = scored[0]?.score ?? 0;
         const dynamicThreshold = Math.max(3.0, topScore * 0.4);
@@ -388,12 +419,15 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
     const scored = scoreAllMovies(Array.from(allMovies.values()), newHistory, newClueIds);
     setScoredPool(scored);
 
-    let nextQ = selectSmartNextQuestion(scored, newAsked, hasAnsweredEra, newCount);
+    let nextQ = selectSmartNextQuestion(scored, newAsked, hasAnsweredEra, newCount, newHistory);
     if (!nextQ) {
-      const topRemaining = scored.filter((s) => s.score >= 0.5).map((s) => s.movie);
-      nextQ = generateDynamicQuestion(topRemaining, newAsked, candidateActors);
+      const filtered = filterPoolByHistory(
+        scored.filter((s) => s.score >= 0.5).map((s) => s.movie),
+        newHistory
+      );
+      nextQ = generateDynamicQuestion(filtered, newAsked, candidateActors);
       if (nextQ) {
-        nextQ = { ...nextQ, focusHint: getNarrowingInsight(topRemaining, newCount).hint };
+        nextQ = { ...nextQ, focusHint: getNarrowingInsight(filtered, newCount).hint };
       }
     }
     setCurrentQuestion(nextQ || null);
@@ -430,12 +464,15 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
     const scored = scoreAllMovies(Array.from(allMovies.values()), newHistory, clueMatches);
     setScoredPool(scored);
 
-    let nextQ = selectSmartNextQuestion(scored, newAsked, hasAnsweredEra, questionCount + 1);
+    let nextQ = selectSmartNextQuestion(scored, newAsked, hasAnsweredEra, questionCount + 1, newHistory);
     if (!nextQ) {
-      const topRemaining = scored.filter((s) => s.score >= 0.5).map((s) => s.movie);
-      nextQ = generateDynamicQuestion(topRemaining, newAsked, []);
+      const filtered = filterPoolByHistory(
+        scored.filter((s) => s.score >= 0.5).map((s) => s.movie),
+        newHistory
+      );
+      nextQ = generateDynamicQuestion(filtered, newAsked, []);
       if (nextQ) {
-        nextQ = { ...nextQ, focusHint: getNarrowingInsight(topRemaining, questionCount + 1).hint };
+        nextQ = { ...nextQ, focusHint: getNarrowingInsight(filtered, questionCount + 1).hint };
       }
     }
     setCurrentQuestion(nextQ || null);
@@ -452,7 +489,14 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
       setActiveStudioPill(label);
       const nextFilters = { ...filters, with_companies: companyId };
       setFilters(nextFilters);
-      executeLiveQueryWithFilters(nextFilters, history, askedIds, clueMatches, questionCount, hasAnsweredEra);
+      // Mark studio-related questions so we don't re-ask Disney after tapping the pill
+      const newAsked = new Set(askedIds);
+      if (companyId === '2|3') {
+        markRelatedAskedIds('disney_pixar', newAsked);
+        MUTUAL_EXCLUSIONS.disney_pixar?.forEach((id) => newAsked.add(id));
+      }
+      setAskedIds(newAsked);
+      executeLiveQueryWithFilters(nextFilters, history, newAsked, clueMatches, questionCount, hasAnsweredEra);
     }
   };
 

@@ -58,34 +58,71 @@ export interface LiveDiscoverFilters {
 
 // ── Smart Question Implication Matrices ───────────────────────────────────────
 
+/** After a YES, never ask these (incompatible or redundant). */
 export const MUTUAL_EXCLUSIONS: Record<string, string[]> = {
   // Kids/Family/Animated -> Skip heavy genres
-  animated: ['horror', 'crime', 'war', 'thriller', 'theme_animated', 'theme_villain_powers'],
-  disney_pixar: ['horror', 'crime', 'war', 'thriller', 'theme_disney', 'theme_villain_powers'],
-  theme_animated: ['horror', 'crime', 'war', 'thriller', 'animated', 'theme_villain_powers'],
-  theme_disney: ['horror', 'crime', 'war', 'thriller', 'disney_pixar', 'theme_villain_powers'],
-  theme_family_children: ['horror', 'crime', 'war', 'thriller'],
-  theme_school_young: ['horror', 'war'],
+  animated: ['horror', 'crime', 'war', 'thriller', 'theme_animated', 'theme_villain_powers', 'monsters_zombies'],
+  disney_pixar: ['horror', 'crime', 'war', 'thriller', 'theme_disney', 'theme_villain_powers', 'monsters_zombies'],
+  theme_animated: ['horror', 'crime', 'war', 'thriller', 'animated', 'theme_villain_powers', 'monsters_zombies'],
+  theme_disney: ['horror', 'crime', 'war', 'thriller', 'disney_pixar', 'theme_villain_powers', 'monsters_zombies'],
+  theme_family_children: ['horror', 'crime', 'war', 'thriller', 'monsters_zombies'],
+  theme_school_young: ['horror', 'war', 'outer_space', 'theme_space_futuristic'],
 
   // Heavy Genres -> Skip Kids/Family/Light
-  horror: ['animated', 'disney_pixar', 'theme_animated', 'theme_disney', 'theme_family_children', 'musical', 'theme_singing_songs', 'comedy', 'theme_humor_comedy', 'sports', 'romance', 'theme_romance_love', 'theme_school_young', 'theme_animals', 'animal_protagonist', 'theme_royal_kingdom'],
+  horror: ['animated', 'disney_pixar', 'theme_animated', 'theme_disney', 'theme_family_children', 'musical', 'theme_singing_songs', 'comedy', 'theme_humor_comedy', 'sports', 'romance', 'theme_romance_love', 'theme_school_young', 'theme_animals', 'animal_protagonist', 'theme_royal_kingdom', 'cluster_tone_feelgood'],
   crime: ['animated', 'disney_pixar', 'theme_animated', 'theme_disney', 'theme_family_children', 'musical', 'theme_singing_songs', 'theme_animals', 'fantasy_magic', 'theme_royal_kingdom', 'animal_protagonist'],
   war: ['animated', 'disney_pixar', 'theme_animated', 'theme_disney', 'theme_family_children', 'musical', 'theme_singing_songs', 'theme_animals', 'comedy', 'theme_humor_comedy', 'romance', 'theme_romance_love', 'animal_protagonist', 'theme_school_young'],
   thriller: ['animated', 'disney_pixar', 'theme_animated', 'theme_disney', 'theme_family_children', 'musical', 'theme_singing_songs', 'comedy', 'theme_humor_comedy', 'theme_animals', 'animal_protagonist'],
+
+  // Setting conflicts — space is NOT woods/ocean/school, etc.
+  outer_space: [
+    'theme_space_futuristic',
+    'theme_forest_jungle',
+    'theme_ocean_water',
+    'theme_school_young',
+    'theme_royal_kingdom',
+    'sports',
+    'racing_cars',
+    'western',
+    'cluster_genre_western',
+  ],
+  theme_space_futuristic: [
+    'outer_space',
+    'theme_forest_jungle',
+    'theme_ocean_water',
+    'theme_school_young',
+    'theme_royal_kingdom',
+    'sports',
+    'racing_cars',
+    'western',
+  ],
+  theme_forest_jungle: [
+    'outer_space',
+    'theme_space_futuristic',
+    'theme_ocean_water',
+    'scifi',
+    'cluster_genre_science_fiction',
+  ],
+  theme_ocean_water: [
+    'outer_space',
+    'theme_space_futuristic',
+    'theme_forest_jungle',
+  ],
+  theme_royal_kingdom: ['outer_space', 'theme_space_futuristic', 'crime', 'war'],
 
   // Direct conceptual overlaps
   musical: ['theme_singing_songs'],
   theme_singing_songs: ['musical'],
   fantasy_magic: ['theme_magic_spells'],
   theme_magic_spells: ['fantasy_magic'],
-  outer_space: ['theme_space_futuristic'],
-  theme_space_futuristic: ['outer_space'],
   romance: ['theme_romance_love'],
   theme_romance_love: ['romance'],
   comedy: ['theme_humor_comedy'],
   theme_humor_comedy: ['comedy'],
   animal_protagonist: ['theme_animals'],
   theme_animals: ['animal_protagonist'],
+  scifi: ['theme_forest_jungle', 'western', 'theme_school_young'],
+  cluster_genre_science_fiction: ['theme_forest_jungle', 'theme_ocean_water', 'outer_space', 'theme_space_futuristic', 'western'],
 };
 
 export const EQUIVALENT_QUESTIONS: Record<string, string[]> = {
@@ -536,6 +573,37 @@ export async function searchLiveTMDb(query: string): Promise<Movie[]> {
 
 // ── Probabilistic Scoring Across Candidate Pool ──────────────────────────────
 
+/**
+ * Hard Akinator constraints: after Yes/No, drop movies that clearly contradict.
+ * "Sometimes" / "Not sure" stay soft and do not eliminate.
+ */
+export function filterPoolByHistory(
+  movies: Movie[],
+  history: { q: WizardQuestion; answer: WizardAnswer }[]
+): Movie[] {
+  if (history.length === 0) return movies;
+  return movies.filter((m) => {
+    for (const { q, answer } of history) {
+      const match = q.match(m);
+      if (answer === 'yes' && match < 0.28) return false;
+      if (answer === 'no' && match >= 0.65) return false;
+    }
+    return true;
+  });
+}
+
+export function hasHardDiscoverFilters(filters: LiveDiscoverFilters): boolean {
+  return Boolean(
+    filters.with_companies ||
+      filters.with_genres.size > 0 ||
+      filters.without_genres.size > 0 ||
+      filters.with_keywords.size > 0 ||
+      filters.primary_release_date_gte ||
+      filters.primary_release_date_lte ||
+      (filters.vote_average_gte && filters.vote_average_gte > 0)
+  );
+}
+
 export function scoreAllMovies(
   movies: Movie[],
   history: { q: WizardQuestion; answer: WizardAnswer }[],
@@ -552,9 +620,9 @@ export function scoreAllMovies(
       const match = q.match(m);
       switch (answer) {
         case 'yes':
-          if (match >= 0.7) score += 4.5;
-          else if (match >= 0.3) score += 1.5;
-          else score -= 4.0; // strong penalty for mismatching a 'yes' answer
+          if (match >= 0.7) score += 6.0;
+          else if (match >= 0.3) score += 2.0;
+          else score -= 12.0; // hard contradiction
           break;
         case 'sometimes':
           if (match >= 0.2 && match <= 0.8) score += 2.5;
@@ -562,9 +630,9 @@ export function scoreAllMovies(
           else score -= 0.5;
           break;
         case 'no':
-          if (match <= 0.2) score += 2.5;
+          if (match <= 0.2) score += 3.0;
           else if (match <= 0.5) score += 0.5;
-          else score -= 5.0; // strong penalty for mismatching a 'no' answer
+          else score -= 12.0; // hard contradiction
           break;
         case 'skip':
           break;
@@ -1053,9 +1121,20 @@ export function selectSmartNextQuestion(
   scoredPool: ScoredMovie[],
   askedIds: Set<string>,
   hasAnsweredEra: boolean = false,
-  questionCount: number = 0
+  questionCount: number = 0,
+  history: { q: WizardQuestion; answer: WizardAnswer }[] = []
 ): WizardQuestion | null {
-  const pool = topContenderMovies(scoredPool, questionCount < 3 ? 40 : 28);
+  // Only ask about movies that still fit Yes/No answers
+  const constrained = filterPoolByHistory(
+    scoredPool.map((s) => s.movie),
+    history
+  );
+  const constrainedScored =
+    constrained.length > 0
+      ? scoredPool.filter((s) => constrained.some((m) => String(m.id) === String(s.movie.id)))
+      : scoredPool;
+
+  const pool = topContenderMovies(constrainedScored, questionCount < 3 ? 40 : 28);
   if (pool.length === 0) return null;
 
   // First 1–2 turns: broad factual openers when they still split the pool
@@ -1084,7 +1163,7 @@ export function selectSmartNextQuestion(
   }
 
   // Fall back to information-gain over the static bank
-  const bankQ = selectNextQuestion(scoredPool, askedIds, hasAnsweredEra);
+  const bankQ = selectNextQuestion(constrainedScored, askedIds, hasAnsweredEra);
   if (bankQ) {
     return {
       ...bankQ,
