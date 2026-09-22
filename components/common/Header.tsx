@@ -70,7 +70,7 @@ export const Header: React.FC<HeaderProps> = ({
                 : 'text-neutral-400 hover:text-white'
             }`}
           >
-            Matchmaker (6 Qs)
+            Matchmaker
           </button>
         </nav>
 
