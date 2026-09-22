@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   X,
   Clapperboard,
@@ -11,16 +11,21 @@ import {
   XCircle,
   HelpCircle,
   Sparkles,
-  Search
+  Search,
+  Globe2,
+  Loader2
 } from 'lucide-react';
 import { Movie } from '@/lib/tmdb/types';
 import {
-  fetchWizardCatalog,
+  queryLiveTMDbDiscover,
+  searchLiveTMDb,
+  scoreAllMovies,
   selectNextQuestion,
-  updateScores,
-  ScoredMovie,
+  createInitialFilters,
+  LiveDiscoverFilters,
   WizardQuestion,
   WizardAnswer,
+  ScoredMovie,
 } from '@/lib/tmdb/movieFinder';
 
 interface MovieFinderWizardProps {
@@ -38,36 +43,43 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
   onClose,
   onSelectMovie,
 }) => {
-  const [catalog, setCatalog] = useState<Movie[]>([]);
-  const [scoredPool, setScoredPool] = useState<ScoredMovie[]>([]);
-  const [loadProgress, setLoadProgress] = useState(0);
   const [phase, setPhase] = useState<Phase>('loading');
+  const [filters, setFilters] = useState<LiveDiscoverFilters>(createInitialFilters());
+  const [allMovies, setAllMovies] = useState<Map<string, Movie>>(new Map());
+  const [scoredPool, setScoredPool] = useState<ScoredMovie[]>([]);
   const [currentQuestion, setCurrentQuestion] = useState<WizardQuestion | null>(null);
   const [askedIds, setAskedIds] = useState<Set<string>>(new Set());
   const [questionCount, setQuestionCount] = useState(0);
-  const [clueText, setClueText] = useState('');
   const [history, setHistory] = useState<{ q: WizardQuestion; answer: WizardAnswer }[]>([]);
+  const [clueMatches, setClueMatches] = useState<Set<string>>(new Set());
+  const [clueText, setClueText] = useState('');
+  const [isQueryingTMDb, setIsQueryingTMDb] = useState(false);
+  const [liveDbHits, setLiveDbHits] = useState(0);
 
-  // Initialize and load catalog when modal opens
+  // Initialize live session on open
   useEffect(() => {
     if (!isOpen) return;
+
     setPhase('loading');
-    setLoadProgress(0);
     setClueText('');
+    const initFilters = createInitialFilters();
+    setFilters(initFilters);
+    setAskedIds(new Set());
+    setQuestionCount(0);
+    setHistory([]);
+    setClueMatches(new Set());
 
-    fetchWizardCatalog((count) => setLoadProgress(count)).then((movies) => {
-      setCatalog(movies);
-      // Initialize pool with slight popularity score bias so prominent films have a natural mild prior
-      const initial: ScoredMovie[] = movies.map((m) => ({
-        movie: m,
-        score: Math.min((m.vote_count || 0) / 5000, 2.0),
-      })).sort((a, b) => b.score - a.score);
+    // Initial Live TMDB query to populate initial pool
+    queryLiveTMDbDiscover(initFilters, 3).then((movies) => {
+      const map = new Map<string, Movie>();
+      movies.forEach((m) => map.set(String(m.id), m));
+      setAllMovies(map);
+      setLiveDbHits(map.size);
 
-      setScoredPool(initial);
-      setAskedIds(new Set());
-      setQuestionCount(0);
-      setHistory([]);
-      const firstQ = selectNextQuestion(initial, new Set());
+      const scored = scoreAllMovies(Array.from(map.values()), []);
+      setScoredPool(scored);
+
+      const firstQ = selectNextQuestion(scored, new Set());
       setCurrentQuestion(firstQ);
       setPhase('asking');
     });
@@ -82,74 +94,141 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
     return () => document.removeEventListener('keydown', handler);
   }, [isOpen, onClose]);
 
-  // Process user answer
-  const handleAnswer = useCallback((answer: WizardAnswer) => {
-    if (!currentQuestion) return;
+  // Handle user answer with Live TMDb Discover query
+  const handleAnswer = useCallback(
+    async (answer: WizardAnswer) => {
+      if (!currentQuestion) return;
 
-    const newPool = updateScores(scoredPool, currentQuestion, answer);
-    const newAsked = new Set(askedIds);
-    newAsked.add(currentQuestion.id);
-    const newCount = questionCount + 1;
+      setIsQueryingTMDb(true);
 
-    setHistory((h) => [...h, { q: currentQuestion, answer }]);
-    setScoredPool(newPool);
-    setAskedIds(newAsked);
-    setQuestionCount(newCount);
+      // 1. Build updated live TMDb Discover filters
+      const nextFilters: LiveDiscoverFilters = {
+        with_genres: new Set(filters.with_genres),
+        without_genres: new Set(filters.without_genres),
+        with_keywords: new Set(filters.with_keywords),
+        without_keywords: new Set(filters.without_keywords),
+        primary_release_date_gte: filters.primary_release_date_gte,
+        primary_release_date_lte: filters.primary_release_date_lte,
+        vote_count_gte: filters.vote_count_gte,
+        vote_average_gte: filters.vote_average_gte,
+        with_original_language: filters.with_original_language,
+      };
 
-    // Check if ready to reveal: either hit max questions or leader has high confidence lead
-    const topScore = newPool[0]?.score || 0;
-    const secondScore = newPool[1]?.score || 0;
-    const hasHighConfidence = newCount >= 10 && (topScore - secondScore >= 5.5);
+      if (answer === 'yes' && currentQuestion.onYes) {
+        const u = currentQuestion.onYes;
+        if (u.with_genres) u.with_genres.split(',').forEach((g) => nextFilters.with_genres.add(g));
+        if (u.without_genres) u.without_genres.split(',').forEach((g) => nextFilters.without_genres.add(g));
+        if (u.with_keywords) u.with_keywords.split('|').forEach((k) => nextFilters.with_keywords.add(k));
+        if (u.primary_release_date_gte) nextFilters.primary_release_date_gte = u.primary_release_date_gte;
+        if (u.primary_release_date_lte) nextFilters.primary_release_date_lte = u.primary_release_date_lte;
+        if (u.vote_count_gte) nextFilters.vote_count_gte = u.vote_count_gte;
+        if (u.vote_average_gte) nextFilters.vote_average_gte = u.vote_average_gte;
+      } else if (answer === 'no' && currentQuestion.onNo) {
+        const u = currentQuestion.onNo;
+        if (u.without_genres) u.without_genres.split(',').forEach((g) => nextFilters.without_genres.add(g));
+        if (u.without_keywords) u.without_keywords.split(',').forEach((k) => nextFilters.without_keywords.add(k));
+        if (u.primary_release_date_gte) nextFilters.primary_release_date_gte = u.primary_release_date_gte;
+        if (u.primary_release_date_lte) nextFilters.primary_release_date_lte = u.primary_release_date_lte;
+      }
 
-    if (newCount >= MAX_QUESTIONS || hasHighConfidence) {
-      setPhase('results');
-      setCurrentQuestion(null);
-    } else {
-      const nextQ = selectNextQuestion(newPool, newAsked);
-      setCurrentQuestion(nextQ || null);
-      if (!nextQ) setPhase('results');
-    }
-  }, [currentQuestion, scoredPool, askedIds, questionCount]);
+      setFilters(nextFilters);
 
-  // Add optional keyword clue to boost matching candidates
-  const handleApplyClue = (e: React.FormEvent) => {
+      const newHistory = [...history, { q: currentQuestion, answer }];
+      const newAsked = new Set(askedIds);
+      newAsked.add(currentQuestion.id);
+      const newCount = questionCount + 1;
+
+      setHistory(newHistory);
+      setAskedIds(newAsked);
+      setQuestionCount(newCount);
+
+      // 2. Query Live TMDb across all 1,000,000+ movies
+      const liveDiscovered = await queryLiveTMDbDiscover(nextFilters, 2);
+
+      // 3. Merge newly discovered live movies into candidate pool
+      const updatedMap = new Map(allMovies);
+      liveDiscovered.forEach((m) => updatedMap.set(String(m.id), m));
+      setAllMovies(updatedMap);
+      setLiveDbHits(updatedMap.size);
+
+      // 4. Score all movies against entire history
+      const scored = scoreAllMovies(Array.from(updatedMap.values()), newHistory, clueMatches);
+      setScoredPool(scored);
+      setIsQueryingTMDb(false);
+
+      // 5. Check if ready to reveal
+      const topScore = scored[0]?.score || 0;
+      const secondScore = scored[1]?.score || 0;
+      const confidentLead = newCount >= 8 && topScore - secondScore >= 6.0;
+
+      if (newCount >= MAX_QUESTIONS || confidentLead) {
+        setPhase('results');
+        setCurrentQuestion(null);
+      } else {
+        const nextQ = selectNextQuestion(scored, newAsked);
+        setCurrentQuestion(nextQ || null);
+        if (!nextQ) setPhase('results');
+      }
+    },
+    [currentQuestion, filters, history, askedIds, questionCount, allMovies, clueMatches]
+  );
+
+  // Apply a clue directly across TMDb's live database (actor, character, or plot word)
+  const handleApplyClue = async (e: React.FormEvent) => {
     e.preventDefault();
-    const clean = clueText.trim().toLowerCase();
+    const clean = clueText.trim();
     if (!clean) return;
 
-    const boosted = scoredPool.map(({ movie, score }) => {
-      const text = `${movie.title || ''} ${movie.overview || ''} ${(movie.genres || []).join(' ')}`.toLowerCase();
-      const boost = text.includes(clean) ? 6.0 : 0;
-      return {
-        movie,
-        score: score + boost,
-      };
-    }).sort((a, b) => b.score - a.score);
+    setIsQueryingTMDb(true);
+    const searchResults = await searchLiveTMDb(clean);
 
-    setScoredPool(boosted);
+    const updatedMap = new Map(allMovies);
+    const newClueIds = new Set(clueMatches);
+
+    searchResults.forEach((m) => {
+      const idStr = String(m.id);
+      updatedMap.set(idStr, m);
+      newClueIds.add(idStr);
+    });
+
+    setAllMovies(updatedMap);
+    setClueMatches(newClueIds);
+    setLiveDbHits(updatedMap.size);
+
+    const scored = scoreAllMovies(Array.from(updatedMap.values()), history, newClueIds);
+    setScoredPool(scored);
     setClueText('');
+    setIsQueryingTMDb(false);
   };
 
   const handleReset = () => {
-    const initial: ScoredMovie[] = catalog.map((m) => ({
-      movie: m,
-      score: Math.min((m.vote_count || 0) / 5000, 2.0),
-    })).sort((a, b) => b.score - a.score);
-
-    setScoredPool(initial);
+    setPhase('loading');
+    const initFilters = createInitialFilters();
+    setFilters(initFilters);
     setAskedIds(new Set());
     setQuestionCount(0);
     setHistory([]);
+    setClueMatches(new Set());
     setClueText('');
-    const firstQ = selectNextQuestion(initial, new Set());
-    setCurrentQuestion(firstQ);
-    setPhase('asking');
+
+    queryLiveTMDbDiscover(initFilters, 3).then((movies) => {
+      const map = new Map<string, Movie>();
+      movies.forEach((m) => map.set(String(m.id), m));
+      setAllMovies(map);
+      setLiveDbHits(map.size);
+
+      const scored = scoreAllMovies(Array.from(map.values()), []);
+      setScoredPool(scored);
+
+      const firstQ = selectNextQuestion(scored, new Set());
+      setCurrentQuestion(firstQ);
+      setPhase('asking');
+    });
   };
 
   if (!isOpen) return null;
 
   const progressPct = questionCount / MAX_QUESTIONS;
-  // Top candidates shown live during questions
   const topCandidates = scoredPool.slice(0, 10).map((s) => s.movie);
   const finalResults = scoredPool.slice(0, 10).map((s) => s.movie);
 
@@ -158,20 +237,20 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
       {/* Header Bar */}
       <div className="w-full max-w-4xl px-4 pt-4 pb-2 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400">
+          <div className="w-8 h-8 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shadow-sm">
             <Clapperboard className="w-4 h-4" />
           </div>
           <div>
             <div className="flex items-center gap-2">
               <span className="font-black text-white text-base sm:text-lg tracking-tight">Movie Finder</span>
-              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                20Q
+              <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                <Globe2 className="w-3 h-3" /> Live TMDb (1M+ Movies)
               </span>
             </div>
             <p className="text-neutral-500 text-xs hidden sm:block">
-              {phase === 'asking' && `Question ${questionCount + 1} of up to ${MAX_QUESTIONS} — Bayesian decision scoring`}
-              {phase === 'results' && 'Found your closest matches!'}
-              {phase === 'loading' && 'Building cinematic probability database...'}
+              {phase === 'asking' && `Question ${questionCount + 1} of up to ${MAX_QUESTIONS} — Querying live database`}
+              {phase === 'results' && 'Top candidate matches from TMDb'}
+              {phase === 'loading' && 'Connecting to TMDb global film directory...'}
             </p>
           </div>
         </div>
@@ -188,15 +267,13 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
       {phase === 'loading' && (
         <div className="flex-1 flex flex-col items-center justify-center gap-4 px-4 text-center">
           <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center animate-pulse">
-            <Clapperboard className="w-8 h-8 text-amber-400" />
+            <Globe2 className="w-8 h-8 text-amber-400" />
           </div>
-          <p className="text-white font-bold text-lg sm:text-xl">Loading Movie Database...</p>
-          <p className="text-neutral-400 text-sm">{loadProgress} popular and acclaimed films pre-loaded</p>
-          <div className="w-72 max-w-full h-2 bg-neutral-900 rounded-full overflow-hidden border border-neutral-800">
-            <div
-              className="h-full bg-amber-500 rounded-full transition-all duration-300"
-              style={{ width: `${Math.min((loadProgress / 700) * 100, 95)}%` }}
-            />
+          <p className="text-white font-bold text-lg sm:text-xl">Connecting to TMDb Live...</p>
+          <p className="text-neutral-400 text-sm">Searching across 1,000,000+ indexed cinema titles</p>
+          <div className="flex items-center gap-2 text-amber-400 text-xs font-semibold mt-2">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            <span>Calibrating live decision tree...</span>
           </div>
         </div>
       )}
@@ -208,9 +285,18 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
           <div className="w-full my-3 shrink-0">
             <div className="flex items-center justify-between text-xs text-neutral-400 mb-1.5 font-medium">
               <span>Question {questionCount} of 20</span>
-              <span className="text-amber-400 font-semibold flex items-center gap-1">
-                <Sparkles className="w-3 h-3" />
-                Adaptive ranking active
+              <span className="text-amber-400 font-semibold flex items-center gap-1.5">
+                {isQueryingTMDb ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400" />
+                    <span>Searching live TMDb...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>{liveDbHits} live candidate matches</span>
+                  </>
+                )}
               </span>
             </div>
             <div className="w-full h-1.5 bg-neutral-900 rounded-full overflow-hidden border border-neutral-800">
@@ -237,26 +323,29 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3 mt-6">
               {/* NO */}
               <button
+                disabled={isQueryingTMDb}
                 onClick={() => handleAnswer('no')}
-                className="flex flex-col items-center justify-center gap-1 py-3 px-3 rounded-2xl bg-red-950/60 border border-red-600/50 hover:border-red-500 hover:bg-red-900/60 text-red-300 hover:text-white transition active:scale-95 font-bold text-sm sm:text-base shadow"
+                className="flex flex-col items-center justify-center gap-1 py-3 px-3 rounded-2xl bg-red-950/60 border border-red-600/50 hover:border-red-500 hover:bg-red-900/60 text-red-300 hover:text-white transition active:scale-95 font-bold text-sm sm:text-base shadow disabled:opacity-50"
               >
                 <XCircle className="w-5 h-5 text-red-400" />
                 <span>No</span>
               </button>
 
-              {/* SOMETIMES / PARTLY */}
+              {/* SOMETIMES */}
               <button
+                disabled={isQueryingTMDb}
                 onClick={() => handleAnswer('sometimes')}
-                className="flex flex-col items-center justify-center gap-1 py-3 px-3 rounded-2xl bg-amber-950/60 border border-amber-500/50 hover:border-amber-400 hover:bg-amber-900/60 text-amber-300 hover:text-white transition active:scale-95 font-bold text-sm sm:text-base shadow"
+                className="flex flex-col items-center justify-center gap-1 py-3 px-3 rounded-2xl bg-amber-950/60 border border-amber-500/50 hover:border-amber-400 hover:bg-amber-900/60 text-amber-300 hover:text-white transition active:scale-95 font-bold text-sm sm:text-base shadow disabled:opacity-50"
               >
                 <HelpCircle className="w-5 h-5 text-amber-400" />
                 <span>Sometimes</span>
               </button>
 
-              {/* NOT SURE / SKIP */}
+              {/* NOT SURE */}
               <button
+                disabled={isQueryingTMDb}
                 onClick={() => handleAnswer('skip')}
-                className="flex flex-col items-center justify-center gap-1 py-3 px-3 rounded-2xl bg-neutral-800/80 border border-neutral-700 hover:border-neutral-600 hover:bg-neutral-700 text-neutral-300 hover:text-white transition active:scale-95 font-semibold text-sm shadow"
+                className="flex flex-col items-center justify-center gap-1 py-3 px-3 rounded-2xl bg-neutral-800/80 border border-neutral-700 hover:border-neutral-600 hover:bg-neutral-700 text-neutral-300 hover:text-white transition active:scale-95 font-semibold text-sm shadow disabled:opacity-50"
               >
                 <Minus className="w-5 h-5 text-neutral-400" />
                 <span>Not sure</span>
@@ -264,8 +353,9 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
 
               {/* YES */}
               <button
+                disabled={isQueryingTMDb}
                 onClick={() => handleAnswer('yes')}
-                className="flex flex-col items-center justify-center gap-1 py-3 px-3 rounded-2xl bg-emerald-950/60 border border-emerald-500/50 hover:border-emerald-400 hover:bg-emerald-900/60 text-emerald-300 hover:text-white transition active:scale-95 font-bold text-sm sm:text-base shadow"
+                className="flex flex-col items-center justify-center gap-1 py-3 px-3 rounded-2xl bg-emerald-950/60 border border-emerald-500/50 hover:border-emerald-400 hover:bg-emerald-900/60 text-emerald-300 hover:text-white transition active:scale-95 font-bold text-sm sm:text-base shadow disabled:opacity-50"
               >
                 <Check className="w-5 h-5 text-emerald-400" />
                 <span>Yes</span>
@@ -273,7 +363,7 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
             </div>
           </div>
 
-          {/* Optional Clue Bar: give a keyword or actor if you remember one */}
+          {/* Optional Clue Bar: Query live TMDb by actor, keyword, or character */}
           <form
             onSubmit={handleApplyClue}
             className="w-full max-w-xl flex items-center gap-2 mb-3 shrink-0"
@@ -284,7 +374,7 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
                 type="text"
                 value={clueText}
                 onChange={(e) => setClueText(e.target.value)}
-                placeholder="Remember an actor, word, or clue? (Optional)"
+                placeholder="Remember an actor, word, or character? (Live search TMDB)"
                 className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-neutral-900/80 border border-neutral-800 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-amber-500"
               />
             </div>
@@ -293,7 +383,7 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
                 type="submit"
                 className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-neutral-950 text-xs font-bold transition shrink-0"
               >
-                Boost Clue
+                Search Clue
               </button>
             )}
           </form>
@@ -304,7 +394,7 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
               <div className="flex items-center justify-between px-2 mb-1.5">
                 <span className="text-neutral-400 text-xs font-medium flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-                  Leading matches right now — click anytime to pick:
+                  Top live matches from TMDB — click anytime to finish:
                 </span>
                 <span className="text-neutral-500 text-[11px]">
                   Top {topCandidates.length}
@@ -367,7 +457,7 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
               🎬 Is it one of these movies?
             </h2>
             <p className="text-neutral-400 text-sm">
-              Ranked by your answers after {questionCount} questions
+              Identified across live TMDb database after {questionCount} questions
             </p>
           </div>
 

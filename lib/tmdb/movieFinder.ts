@@ -1,21 +1,58 @@
 'use client';
 
 import { Movie } from './types';
-import { tmdb } from './client';
+import { tmdb, DEFAULT_TMDB_API_KEY } from './client';
 
 export type WizardAnswer = 'yes' | 'sometimes' | 'no' | 'skip';
+
+export interface DiscoverParamUpdate {
+  with_genres?: string;
+  without_genres?: string;
+  with_keywords?: string;
+  without_keywords?: string;
+  primary_release_date_gte?: string;
+  primary_release_date_lte?: string;
+  vote_count_gte?: number;
+  vote_average_gte?: number;
+  with_original_language?: string;
+}
 
 export interface WizardQuestion {
   id: string;
   question: string;
   hint?: string;
-  // Returns match degree from 0.0 (definite no) to 1.0 (definite yes)
+  // Fuzzy match degree (0.0 to 1.0)
   match: (m: Movie) => number;
+  // Live TMDB Discover filter updates
+  onYes?: DiscoverParamUpdate;
+  onNo?: DiscoverParamUpdate;
 }
 
 export interface ScoredMovie {
   movie: Movie;
   score: number;
+}
+
+export interface LiveDiscoverFilters {
+  with_genres: Set<string>;
+  without_genres: Set<string>;
+  with_keywords: Set<string>;
+  without_keywords: Set<string>;
+  primary_release_date_gte?: string;
+  primary_release_date_lte?: string;
+  vote_count_gte?: number;
+  vote_average_gte?: number;
+  with_original_language?: string;
+}
+
+export function createInitialFilters(): LiveDiscoverFilters {
+  return {
+    with_genres: new Set(),
+    without_genres: new Set(),
+    with_keywords: new Set(),
+    without_keywords: new Set(),
+    vote_count_gte: 20, // quality filter: keeps all real movies, eliminates 1-vote noise
+  };
 }
 
 // ── Match helpers returning values between 0.0 and 1.0 ───────────────────────
@@ -25,15 +62,14 @@ const genreWeight = (m: Movie, ...genres: string[]): number => {
   const matchIdx = m.genres.findIndex((mg) =>
     genres.some((g) => mg.toLowerCase().includes(g.toLowerCase()))
   );
-  if (matchIdx === 0) return 1.0; // primary genre
-  if (matchIdx > 0) return 0.7;  // secondary genre
+  if (matchIdx === 0) return 1.0;
+  if (matchIdx > 0) return 0.7;
   return 0;
 };
 
 const eraWeight = (m: Movie, from: number, to: number): number => {
   const y = Number(m.release_date?.slice(0, 4) || 0);
   if (y >= from && y <= to) return 1.0;
-  // Soft boundary: if within 2 years of the era, still give 0.4 so misremembering by 1 year doesn't break it
   if (Math.abs(y - from) <= 2 || Math.abs(y - to) <= 2) return 0.4;
   return 0;
 };
@@ -49,7 +85,7 @@ const textMatch = (m: Movie, ...keywords: string[]): number => {
   return 0;
 };
 
-// ── Extensive Question Bank with fuzzy match scoring ──────────────────────────
+// ── Question Bank with Live TMDB Discover Mappings ───────────────────────────
 
 export const QUESTION_BANK: WizardQuestion[] = [
   // Eras
@@ -63,6 +99,8 @@ export const QUESTION_BANK: WizardQuestion[] = [
       if (y >= 1998) return 0.4;
       return 0;
     },
+    onYes: { primary_release_date_gte: '2001-01-01' },
+    onNo: { primary_release_date_lte: '2000-12-31' },
   },
   {
     id: 'era_2010s',
@@ -74,37 +112,45 @@ export const QUESTION_BANK: WizardQuestion[] = [
       if (y >= 2007) return 0.4;
       return 0;
     },
+    onYes: { primary_release_date_gte: '2010-01-01' },
+    onNo: { primary_release_date_lte: '2009-12-31' },
   },
   {
     id: 'era_90s',
     question: 'Was it released in the 1990s?',
     hint: '1990–1999',
     match: (m) => eraWeight(m, 1990, 1999),
+    onYes: { primary_release_date_gte: '1990-01-01', primary_release_date_lte: '1999-12-31' },
   },
   {
     id: 'era_80s',
     question: 'Was it released in the 1980s?',
     hint: '1980–1989',
     match: (m) => eraWeight(m, 1980, 1989),
+    onYes: { primary_release_date_gte: '1980-01-01', primary_release_date_lte: '1989-12-31' },
   },
   {
     id: 'era_classic',
-    question: 'Is it older — released before 1980?',
-    hint: 'Classic cinema, pre-1980',
+    question: 'Is it an older classic — released before 1980?',
+    hint: 'Pre-1980 cinema',
     match: (m) => {
       const y = Number(m.release_date?.slice(0, 4) || 9999);
       if (y < 1980) return 1.0;
       if (y <= 1983) return 0.4;
       return 0;
     },
+    onYes: { primary_release_date_lte: '1979-12-31' },
+    onNo: { primary_release_date_gte: '1980-01-01' },
   },
 
-  // Dominant Genre & Tone
+  // Genres
   {
     id: 'animated',
     question: 'Is it animated — cartoon, CGI, or anime?',
     hint: 'Disney, Pixar, Ghibli, DreamWorks, anime...',
     match: (m) => genreWeight(m, 'Animation'),
+    onYes: { with_genres: '16' },
+    onNo: { without_genres: '16' },
   },
   {
     id: 'comedy',
@@ -115,6 +161,8 @@ export const QUESTION_BANK: WizardQuestion[] = [
       if (gw > 0) return gw;
       return textMatch(m, 'hilarious', 'funny', 'humorous', 'comedy');
     },
+    onYes: { with_genres: '35' },
+    onNo: { without_genres: '35' },
   },
   {
     id: 'action',
@@ -124,6 +172,8 @@ export const QUESTION_BANK: WizardQuestion[] = [
       if (gw > 0) return gw;
       return textMatch(m, 'fight', 'chase', 'gun', 'battle', 'warrior', 'martial arts');
     },
+    onYes: { with_genres: '28' },
+    onNo: { without_genres: '28' },
   },
   {
     id: 'scifi',
@@ -133,6 +183,8 @@ export const QUESTION_BANK: WizardQuestion[] = [
       if (gw > 0) return gw;
       return textMatch(m, 'future', 'space', 'robot', 'alien', 'cyber', 'technology');
     },
+    onYes: { with_genres: '878' },
+    onNo: { without_genres: '878' },
   },
   {
     id: 'horror',
@@ -143,12 +195,16 @@ export const QUESTION_BANK: WizardQuestion[] = [
       if (gw > 0) return gw;
       return textMatch(m, 'haunt', 'killer', 'scary', 'demon', 'terror');
     },
+    onYes: { with_genres: '27' },
+    onNo: { without_genres: '27' },
   },
   {
     id: 'thriller',
     question: 'Is it a suspenseful thriller or mystery?',
     hint: 'Tense, edge-of-your-seat, unexpected twists',
     match: (m) => genreWeight(m, 'Thriller', 'Mystery'),
+    onYes: { with_genres: '53' },
+    onNo: { without_genres: '53' },
   },
   {
     id: 'romance',
@@ -158,10 +214,12 @@ export const QUESTION_BANK: WizardQuestion[] = [
       if (gw > 0) return gw;
       return textMatch(m, 'love', 'relationship', 'romance', 'couple', 'marriage');
     },
+    onYes: { with_genres: '10749' },
+    onNo: { without_genres: '10749' },
   },
   {
     id: 'drama',
-    question: 'Is it a serious drama — emotional, character-driven?',
+    question: 'Is it primarily a serious drama — emotional, character-driven?',
     match: (m) => {
       const isD = genreWeight(m, 'Drama');
       const isAct = genreWeight(m, 'Action', 'Horror');
@@ -169,6 +227,7 @@ export const QUESTION_BANK: WizardQuestion[] = [
       if (isD > 0) return 0.5;
       return 0;
     },
+    onYes: { with_genres: '18' },
   },
   {
     id: 'fantasy',
@@ -179,11 +238,14 @@ export const QUESTION_BANK: WizardQuestion[] = [
       if (gw > 0) return gw;
       return textMatch(m, 'magic', 'wizard', 'witch', 'dragon', 'spell', 'kingdom');
     },
+    onYes: { with_genres: '14' },
+    onNo: { without_genres: '14' },
   },
   {
     id: 'crime',
     question: 'Does it involve crime — heists, gangsters, the mob, or detectives?',
     match: (m) => genreWeight(m, 'Crime'),
+    onYes: { with_genres: '80' },
   },
   {
     id: 'war',
@@ -193,6 +255,8 @@ export const QUESTION_BANK: WizardQuestion[] = [
       if (gw > 0) return gw;
       return textMatch(m, 'world war', 'soldier', 'army', 'combat', 'troops', 'military');
     },
+    onYes: { with_genres: '10752' },
+    onNo: { without_genres: '10752' },
   },
   {
     id: 'superhero',
@@ -203,6 +267,7 @@ export const QUESTION_BANK: WizardQuestion[] = [
       if (/\b(spider-man|batman|superman|iron man|avengers|marvel|dc comics|thor|captain america|x-men|joker)\b/.test(t)) return 1.0;
       return textMatch(m, 'superhero', 'super power', 'mutant');
     },
+    onYes: { with_keywords: '9715|18073' },
   },
   {
     id: 'based_on_true',
@@ -212,62 +277,72 @@ export const QUESTION_BANK: WizardQuestion[] = [
       if (gw > 0) return 1.0;
       return textMatch(m, 'true story', 'based on', 'biography', 'real life', 'historic');
     },
+    onYes: { with_genres: '36' },
   },
 
-  // Specific high-signal plot devices
+  // Keywords and specific plot devices
   {
     id: 'time_travel',
     question: 'Does it involve time travel or a repeating time loop?',
     hint: 'Back to the Future, Groundhog Day, Interstellar, Edge of Tomorrow...',
     match: (m) => textMatch(m, 'time travel', 'time loop', 'timeline', 'wormhole', 'relativity', 'loop'),
+    onYes: { with_keywords: '4379' },
   },
   {
     id: 'heist',
     question: 'Is it a heist, robbery, or bank job movie?',
     hint: "Ocean's Eleven, Inception, Heat, Baby Driver, The Italian Job...",
     match: (m) => textMatch(m, 'heist', 'robbery', 'bank', 'steal', 'thief', 'vault', 'con artist'),
+    onYes: { with_keywords: '10051|9717' },
   },
   {
     id: 'spy',
     question: 'Does it feature spies, secret agents, or professional assassins?',
     hint: 'James Bond, Jason Bourne, Mission Impossible, John Wick, Kingsman...',
     match: (m) => textMatch(m, 'spy', 'agent', 'assassin', 'hitman', 'cia', 'mi6', 'espionage'),
+    onYes: { with_keywords: '470|9713' },
   },
   {
     id: 'space',
     question: 'Does it take place in space, on spaceships, or another planet?',
     hint: 'Star Wars, Interstellar, Alien, Dune, Gravity, The Martian...',
     match: (m) => textMatch(m, 'space', 'spaceship', 'planet', 'galaxy', 'astronaut', 'orbit', 'alien'),
+    onYes: { with_keywords: '9882|3801' },
   },
   {
     id: 'ai_robots',
     question: 'Does it involve artificial intelligence, robots, cyborgs, or virtual reality?',
     hint: 'The Matrix, Terminator, Ex Machina, Blade Runner, I Robot...',
     match: (m) => textMatch(m, 'robot', 'artificial intelligence', 'cyborg', 'matrix', 'android', 'simulation'),
+    onYes: { with_keywords: '310|14544' },
   },
   {
     id: 'survival',
     question: 'Is it a survival story — stranded on an island, plane crash, or trapped in the wild?',
     hint: 'Cast Away, The Martian, 127 Hours, The Revenant, Life of Pi...',
     match: (m) => textMatch(m, 'stranded', 'survival', 'plane crash', 'shipwreck', 'deserted', 'lost in', 'trapped'),
+    onYes: { with_keywords: '10085|10705' },
   },
   {
     id: 'detective',
     question: 'Does it follow a detective or investigator solving a murder mystery?',
     hint: 'Knives Out, Se7en, Zodiac, Sherlock Holmes, Shutter Island...',
     match: (m) => textMatch(m, 'detective', 'murder', 'investigat', 'serial killer', 'whodunit', 'clue'),
+    onYes: { with_genres: '9648' },
   },
   {
     id: 'monsters_zombies',
     question: 'Does it feature zombies, vampires, werewolves, or monsters?',
     hint: 'World War Z, 28 Days Later, Dracula, Twilight, Godzilla...',
     match: (m) => textMatch(m, 'zombie', 'vampire', 'monster', 'creature', 'undead', 'infection', 'godzilla'),
+    onYes: { with_keywords: '12377|3133' },
   },
   {
     id: 'cars_racing',
     question: 'Are fast cars, street racing, or driving a major focus?',
     hint: 'Fast and Furious, Baby Driver, Mad Max, Ford v Ferrari...',
     match: (m) => textMatch(m, 'racing', 'fast car', 'street race', 'driver', 'ferrari', 'chase car'),
+    onYes: { with_keywords: '830|10087' },
   },
   {
     id: 'family_kids',
@@ -278,17 +353,19 @@ export const QUESTION_BANK: WizardQuestion[] = [
       if (gw > 0) return 1.0;
       return textMatch(m, 'young boy', 'young girl', 'teenager', 'child', 'orphan', 'school', 'kids');
     },
+    onYes: { with_genres: '10751' },
   },
   {
     id: 'blockbuster',
     question: 'Was it a massive, world-famous Hollywood blockbuster?',
-    hint: 'Everyone has heard of it; huge box office hit',
+    hint: 'Huge box office release; heavily advertised',
     match: (m) => {
       const votes = m.vote_count || 0;
       if (votes >= 10000) return 1.0;
       if (votes >= 5000) return 0.6;
       return 0.2;
     },
+    onYes: { vote_count_gte: 4000 },
   },
   {
     id: 'award_winner',
@@ -300,87 +377,150 @@ export const QUESTION_BANK: WizardQuestion[] = [
       if (r >= 7.6) return 0.6;
       return 0.2;
     },
-  },
-  {
-    id: 'long_epic',
-    question: 'Is it a long epic movie — around or over 2.5 hours?',
-    hint: 'Lord of the Rings, Oppenheimer, Titanic, Avatar, Avengers...',
-    match: (m) => {
-      const runtime = m.runtime || 0;
-      if (runtime >= 150) return 1.0;
-      if (runtime >= 135) return 0.5;
-      return 0.1;
-    },
+    onYes: { vote_average_gte: 7.8, vote_count_gte: 300 },
   },
 ];
 
-// ── Probabilistic Scoring Algorithm ──────────────────────────────────────────
+// ── Live TMDb Discover Fetcher (Queries all 1,000,000+ Movies) ────────────────
 
-/**
- * Updates scores across all movies according to the user's answer.
- * Uses soft Bayesian-style weights so an accidental "No" or subjective "Sometimes"
- * never destroys the true movie.
- */
-export function updateScores(
-  pool: ScoredMovie[],
-  question: WizardQuestion,
-  answer: WizardAnswer
+export async function queryLiveTMDbDiscover(
+  filters: LiveDiscoverFilters,
+  pages: number = 2
+): Promise<Movie[]> {
+  const apiKey = tmdb.getApiKey() || DEFAULT_TMDB_API_KEY;
+  const baseUrl = 'https://api.themoviedb.org/3/discover/movie';
+
+  let query = `api_key=${apiKey}&sort_by=popularity.desc&include_adult=false`;
+
+  if (filters.primary_release_date_gte) {
+    query += `&primary_release_date.gte=${filters.primary_release_date_gte}`;
+  }
+  if (filters.primary_release_date_lte) {
+    query += `&primary_release_date.lte=${filters.primary_release_date_lte}`;
+  }
+  if (filters.with_genres.size > 0) {
+    query += `&with_genres=${Array.from(filters.with_genres).join(',')}`;
+  }
+  if (filters.without_genres.size > 0) {
+    query += `&without_genres=${Array.from(filters.without_genres).join(',')}`;
+  }
+  if (filters.with_keywords.size > 0) {
+    query += `&with_keywords=${Array.from(filters.with_keywords).join('|')}`;
+  }
+  if (filters.without_keywords.size > 0) {
+    query += `&without_keywords=${Array.from(filters.without_keywords).join(',')}`;
+  }
+  if (filters.vote_count_gte) {
+    query += `&vote_count.gte=${filters.vote_count_gte}`;
+  }
+  if (filters.vote_average_gte) {
+    query += `&vote_average.gte=${filters.vote_average_gte}`;
+  }
+  if (filters.with_original_language) {
+    query += `&with_original_language=${filters.with_original_language}`;
+  }
+
+  const pageList = Array.from({ length: pages }, (_, i) => i + 1);
+  const requests = pageList.map(async (p) => {
+    try {
+      const res = await fetch(`${baseUrl}?${query}&page=${p}`);
+      if (res.ok) {
+        const data = await res.json();
+        return (data.results || []).map((m: any) => tmdb.formatTMDbMovie(m));
+      }
+    } catch (err) {
+      console.warn('TMDb live discover query error', err);
+    }
+    return [] as Movie[];
+  });
+
+  const results = await Promise.all(requests);
+  return results.flat().filter((m) => m && m.poster_path && m.title);
+}
+
+// ── Live TMDb Keyword / Actor Clue Search ─────────────────────────────────────
+
+export async function searchLiveTMDb(query: string): Promise<Movie[]> {
+  const clean = query.trim();
+  if (!clean) return [];
+  const apiKey = tmdb.getApiKey() || DEFAULT_TMDB_API_KEY;
+  try {
+    const [movieRes, personRes] = await Promise.all([
+      fetch(`https://api.themoviedb.org/3/search/movie?api_key=${apiKey}&query=${encodeURIComponent(clean)}&include_adult=false`),
+      fetch(`https://api.themoviedb.org/3/search/person?api_key=${apiKey}&query=${encodeURIComponent(clean)}&include_adult=false`),
+    ]);
+    const movies: Movie[] = [];
+    if (movieRes.ok) {
+      const mData = await movieRes.json();
+      (mData.results || []).slice(0, 15).forEach((m: any) => {
+        if (m.poster_path) movies.push(tmdb.formatTMDbMovie(m));
+      });
+    }
+    if (personRes.ok) {
+      const pData = await personRes.json();
+      const person = pData.results?.[0];
+      if (person) {
+        const credits = await fetch(`https://api.themoviedb.org/3/person/${person.id}/movie_credits?api_key=${apiKey}`);
+        if (credits.ok) {
+          const cData = await credits.json();
+          const pMovies = (cData.cast || []).concat(cData.crew || [])
+            .filter((item: any) => item.poster_path)
+            .sort((a: any, b: any) => (b.popularity || 0) - (a.popularity || 0))
+            .slice(0, 15);
+          pMovies.forEach((m: any) => movies.push(tmdb.formatTMDbMovie(m)));
+        }
+      }
+    }
+    return movies;
+  } catch (err) {
+    console.warn('searchLiveTMDb error', err);
+    return [];
+  }
+}
+
+// ── Probabilistic Scoring Algorithm Across Live Pool ─────────────────────────
+
+export function scoreAllMovies(
+  movies: Movie[],
+  history: { q: WizardQuestion; answer: WizardAnswer }[],
+  clueMatches: Set<string> = new Set()
 ): ScoredMovie[] {
-  return pool.map(({ movie, score }) => {
-    const match = question.match(movie);
-    let delta = 0;
+  return movies.map((m) => {
+    let score = Math.min((m.vote_count || 0) / 4000, 2.5); // mild prior for known films
 
-    switch (answer) {
-      case 'yes':
-        if (match >= 0.7) {
-          delta = 3.0;
-        } else if (match >= 0.3) {
-          delta = 1.4;
-        } else {
-          // Mild penalty for non-matching — NEVER eliminate completely
-          delta = -1.2;
-        }
-        break;
-
-      case 'sometimes':
-        // Rewarding borderline/hybrid or partial matches
-        if (match >= 0.2 && match <= 0.8) {
-          delta = 2.4; // Sweet spot for "sometimes"
-        } else if (match > 0.8) {
-          delta = 1.2;
-        } else {
-          // Barely penalty for non-matching on 'sometimes'
-          delta = -0.3;
-        }
-        break;
-
-      case 'no':
-        if (match <= 0.2) {
-          delta = 2.2;
-        } else if (match <= 0.5) {
-          delta = 0.5;
-        } else {
-          // Stronger penalty if it clearly matches what user said NO to
-          delta = -2.2;
-        }
-        break;
-
-      case 'skip':
-        delta = 0; // Neutral
-        break;
+    if (clueMatches.has(String(m.id))) {
+      score += 15.0; // massive boost if user provided a matching clue
     }
 
-    return {
-      movie,
-      score: score + delta,
-    };
+    for (const { q, answer } of history) {
+      const match = q.match(m);
+      switch (answer) {
+        case 'yes':
+          if (match >= 0.7) score += 3.2;
+          else if (match >= 0.3) score += 1.5;
+          else score -= 1.4;
+          break;
+        case 'sometimes':
+          if (match >= 0.2 && match <= 0.8) score += 2.5; // sweet spot for hybrid/partial
+          else if (match > 0.8) score += 1.2;
+          else score -= 0.3;
+          break;
+        case 'no':
+          if (match <= 0.2) score += 2.2;
+          else if (match <= 0.5) score += 0.5;
+          else score -= 2.4;
+          break;
+        case 'skip':
+          break;
+      }
+    }
+
+    return { movie: m, score };
   }).sort((a, b) => b.score - a.score);
 }
 
-/**
- * Selects the next question that best splits the CURRENT TOP CANDIDATES.
- * Rather than splitting the whole dead tail, we focus on discriminating the top 30!
- */
+// ── Adaptive Question Selector ───────────────────────────────────────────────
+
 export function selectNextQuestion(
   scoredPool: ScoredMovie[],
   askedIds: Set<string>
@@ -388,8 +528,8 @@ export function selectNextQuestion(
   const available = QUESTION_BANK.filter((q) => !askedIds.has(q.id));
   if (available.length === 0) return null;
 
-  // Focus discrimination on the top 35 current contenders
-  const topContenders = scoredPool.slice(0, 35).map((s) => s.movie);
+  // Split top 25 current leaders
+  const topContenders = scoredPool.slice(0, 25).map((s) => s.movie);
   if (topContenders.length === 0) return available[0];
 
   let best: WizardQuestion | null = null;
@@ -401,7 +541,7 @@ export function selectNextQuestion(
       sumMatch += q.match(m);
     }
     const avg = sumMatch / topContenders.length;
-    // Score peaks when avg is 0.5 (ideal 50/50 split among the top candidates)
+    // Closest to 0.5 is ideal 50/50 split
     const score = 1.0 - Math.abs(avg - 0.5) * 2;
     if (score > bestScore) {
       bestScore = score;
@@ -410,65 +550,4 @@ export function selectNextQuestion(
   }
 
   return best || available[0];
-}
-
-// ── Broad Catalog Fetcher (Cached in sessionStorage) ──────────────────────────
-
-const CACHE_KEY = 'movielapse_wizard_catalog_v4';
-const CACHE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
-
-export async function fetchWizardCatalog(
-  onProgress?: (count: number) => void
-): Promise<Movie[]> {
-  try {
-    const raw = sessionStorage.getItem(CACHE_KEY);
-    if (raw) {
-      const { movies, ts } = JSON.parse(raw);
-      if (Date.now() - ts < CACHE_TTL_MS && Array.isArray(movies) && movies.length >= 300) {
-        onProgress?.(movies.length);
-        return movies;
-      }
-    }
-  } catch {}
-
-  const seen = new Set<string>();
-  const all: Movie[] = [];
-
-  const add = (movies: Movie[]) => {
-    for (const m of movies) {
-      const key = String(m.id);
-      if (!seen.has(key) && m.poster_path && m.title) {
-        seen.add(key);
-        all.push(m);
-      }
-    }
-    onProgress?.(all.length);
-  };
-
-  // Fetch 20 pages of popular + 15 pages of top rated + 10 pages of trending
-  // (~900 high-profile movies across all eras and genres)
-  const popularPages = Array.from({ length: 20 }, (_, i) => i + 1);
-  const topRatedPages = Array.from({ length: 15 }, (_, i) => i + 1);
-  const trendingPages = Array.from({ length: 10 }, (_, i) => i + 1);
-
-  // Batch 1: Quick burst
-  const batch1 = await Promise.all([
-    ...popularPages.slice(0, 8).map((p) => tmdb.getPopularMovies(p).then((r) => r.results).catch(() => [] as Movie[])),
-    ...topRatedPages.slice(0, 8).map((p) => tmdb.getTopRatedMovies(p).then((r) => r.results).catch(() => [] as Movie[])),
-  ]);
-  batch1.forEach(add);
-
-  // Batch 2: Deep catalogue
-  const batch2 = await Promise.all([
-    ...popularPages.slice(8, 20).map((p) => tmdb.getPopularMovies(p).then((r) => r.results).catch(() => [] as Movie[])),
-    ...topRatedPages.slice(8, 15).map((p) => tmdb.getTopRatedMovies(p).then((r) => r.results).catch(() => [] as Movie[])),
-    ...trendingPages.map((p) => tmdb.getTrendingMovies(p).then((r) => r.results).catch(() => [] as Movie[])),
-  ]);
-  batch2.forEach(add);
-
-  try {
-    sessionStorage.setItem(CACHE_KEY, JSON.stringify({ movies: all, ts: Date.now() }));
-  } catch {}
-
-  return all;
 }

@@ -784,7 +784,7 @@ export class TMDbClient {
     return local || null;
   }
 
-  private formatTMDbMovie(m: any): Movie {
+  public formatTMDbMovie(m: any): Movie {
     const genres = m.genres
       ? m.genres.map((g: any) => g.name)
       : (m.genre_ids ? m.genre_ids.map((id: number) => TMDB_GENRE_MAP[id]).filter(Boolean) : ['Cinema']);
