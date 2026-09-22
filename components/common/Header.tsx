@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Film, Sparkles, Heart, Settings, Smartphone, Tablet, Monitor, SlidersHorizontal } from 'lucide-react';
+import { Film, Sparkles, Settings } from 'lucide-react';
 import { AppMode, DeviceMode, WebLLMProgress } from '@/lib/tmdb/types';
 
 interface HeaderProps {
@@ -10,19 +10,13 @@ interface HeaderProps {
   deviceMode: DeviceMode;
   onSelectDeviceMode: (mode: DeviceMode) => void;
   webllmProgress: WebLLMProgress;
-  lovedCount: number;
-  onOpenTasteProfiler: () => void;
   onOpenSettings: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   appMode,
   onSelectAppMode,
-  deviceMode,
-  onSelectDeviceMode,
   webllmProgress,
-  lovedCount,
-  onOpenTasteProfiler,
   onOpenSettings,
 }) => {
   return (
@@ -74,21 +68,8 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
         </nav>
 
-        {/* Right Tools: Taste, Device Switcher, Engine Pill, Settings */}
+        {/* Right Tools: Engine Pill, Settings */}
         <div className="flex items-center gap-2 sm:gap-3">
-          {/* Taste profile button */}
-          <button
-            onClick={onOpenTasteProfiler}
-            title="Open Taste Profiler to rate more movies"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-neutral-900 border border-neutral-800 hover:border-red-500/40 text-xs font-medium text-neutral-300 hover:text-white transition group"
-          >
-            <Heart className="w-3.5 h-3.5 text-red-400 fill-current group-hover:scale-110 transition-transform" />
-            <span className="hidden sm:inline">Taste Profile</span>
-            <span className="px-1.5 py-0.2 rounded bg-neutral-800 text-[11px] text-amber-400 font-bold">
-              {lovedCount}
-            </span>
-          </button>
-
           {/* Engine Status Indicator */}
           <div
             className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-[11px] font-medium ${

@@ -1,14 +1,12 @@
 'use client';
 
 import React from 'react';
-import { HelpCircle, MessageSquare, Compass, Heart, Film, Search, X } from 'lucide-react';
-import { AppMode, Movie } from '@/lib/tmdb/types';
+import { HelpCircle, MessageSquare, Compass, Film, Search, X } from 'lucide-react';
+import { AppMode } from '@/lib/tmdb/types';
 
 interface MobileLayoutProps {
   appMode: AppMode;
   onSelectAppMode: (mode: AppMode) => void;
-  lovedCount: number;
-  onOpenTasteProfiler: () => void;
   searchQuery?: string;
   onSearchChange?: (val: string) => void;
   onClearSearch?: () => void;
@@ -20,8 +18,6 @@ interface MobileLayoutProps {
 export const MobileLayout: React.FC<MobileLayoutProps> = ({
   appMode,
   onSelectAppMode,
-  lovedCount,
-  onOpenTasteProfiler,
   searchQuery = '',
   onSearchChange,
   onClearSearch,
@@ -78,15 +74,6 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
           <Film className="w-3.5 h-3.5 text-amber-400" />
           <span className="text-[11px] font-extrabold whitespace-nowrap">20Q Finder</span>
         </button>
-
-        <button
-          onClick={onOpenTasteProfiler}
-          title="Taste Profile"
-          className="text-xs text-neutral-400 hover:text-white flex items-center gap-1 bg-neutral-900 px-2 py-1.5 rounded-xl border border-neutral-800 shrink-0"
-        >
-          <Heart className="w-3 h-3 text-red-400 fill-current" />
-          <span>{lovedCount}</span>
-        </button>
       </div>
 
       {/* Main Content View */}
@@ -137,14 +124,6 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
         >
           <HelpCircle className="w-5 h-5" />
           <span className="text-[10px]">Matchmaker</span>
-        </button>
-
-        <button
-          onClick={onOpenTasteProfiler}
-          className="flex flex-col items-center gap-1 py-1 px-2.5 rounded-xl text-neutral-500 hover:text-neutral-300 transition"
-        >
-          <Heart className="w-5 h-5 text-red-400" />
-          <span className="text-[10px]">Taste</span>
         </button>
       </div>
     </div>

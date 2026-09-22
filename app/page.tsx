@@ -9,7 +9,6 @@ import { Movie, WebLLMProgress, DeviceMode } from '@/lib/tmdb/types';
 // Components
 import { Header } from '@/components/common/Header';
 import { SettingsModal } from '@/components/common/SettingsModal';
-import { TasteProfilerModal } from '@/components/onboarding/TasteProfilerModal';
 import { TrailerModal } from '@/components/movie/TrailerModal';
 import { MovieDetailModal } from '@/components/movie/MovieDetailModal';
 import { TwentyQuestionsMode } from '@/components/modes/TwentyQuestionsMode';
@@ -28,7 +27,6 @@ export default function Home() {
   const [isTrailerOpen, setIsTrailerOpen] = useState(false);
   const [selectedDetailMovie, setSelectedDetailMovie] = useState<Movie | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
-  const [isTasteProfilerOpen, setIsTasteProfilerOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [seedMovies, setSeedMovies] = useState<Movie[]>([]);
   const [geminiApiKey, setGeminiApiKey] = useState('');
@@ -132,24 +130,6 @@ export default function Home() {
   const activeEffectiveLayout: 'mobile' | 'tablet' | 'desktop' =
     store.deviceMode === 'auto' ? detectedLayout : store.deviceMode;
 
-  const ratedCount =
-    store.watched.length +
-    store.loved.length +
-    store.okay.length +
-    store.disliked.length +
-    store.watchlist.length;
-
-  // Track all touched movie IDs so Taste Profiler never repeats movies
-  const ratedIds = [
-    ...store.watched.map((m) => m.id),
-    ...store.loved.map((m) => m.id),
-    ...store.okay.map((m) => m.id),
-    ...store.disliked.map((m) => m.id),
-    ...store.watchlist.map((m) => m.id),
-    ...store.skippedIds,
-    ...store.cantRememberIds,
-  ];
-
   // Render the current active mode content
   const renderModeContent = () => {
     switch (store.appMode) {
@@ -221,8 +201,6 @@ export default function Home() {
         deviceMode={store.deviceMode}
         onSelectDeviceMode={store.setDeviceMode}
         webllmProgress={webllmProgress}
-        lovedCount={store.loved.length}
-        onOpenTasteProfiler={() => setIsTasteProfilerOpen(true)}
         onOpenSettings={() => setIsSettingsOpen(true)}
       />
 
@@ -231,8 +209,6 @@ export default function Home() {
         <MobileLayout
           appMode={store.appMode}
           onSelectAppMode={store.setAppMode}
-          lovedCount={store.loved.length}
-          onOpenTasteProfiler={() => setIsTasteProfilerOpen(true)}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
           onClearSearch={() => setSearchQuery('')}
@@ -290,25 +266,6 @@ export default function Home() {
         isDisliked={selectedDetailMovie ? store.disliked.some((m) => String(m.id) === String(selectedDetailMovie.id)) : false}
         isWatchlist={selectedDetailMovie ? store.watchlist.some((m) => String(m.id) === String(selectedDetailMovie.id)) : false}
         isWatched={selectedDetailMovie ? store.watched.some((m) => String(m.id) === String(selectedDetailMovie.id)) : false}
-      />
-
-      {/* Interactive Taste Profiler Onboarding */}
-      <TasteProfilerModal
-        isOpen={isTasteProfilerOpen}
-        onClose={() => setIsTasteProfilerOpen(false)}
-        movies={seedMovies}
-        ratedIds={ratedIds}
-        webllmProgress={webllmProgress}
-        onWatched={store.markWatched}
-        onLove={store.markLoved}
-        onOkay={store.markOkay}
-        onDislike={store.markDisliked}
-        onWatchlist={store.markWatchlist}
-        onCantRemember={store.markCantRemember}
-        onSkip={store.markSkipped}
-        ratedCount={ratedCount}
-        onInstantReady={() => webllmEngine.enableFallback()}
-        onRetryDownload={() => webllmEngine.initEngine()}
       />
 
       {/* 20Q Movie Finder Wizard */}
