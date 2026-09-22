@@ -5,10 +5,7 @@ import confetti from 'canvas-confetti';
 import {
   Sparkles,
   RotateCcw,
-  Check,
   Play,
-  Heart,
-  Bookmark,
   ChevronRight,
   ChevronLeft,
   Loader2,
@@ -20,15 +17,15 @@ import { tmdb } from '@/lib/tmdb/client';
 interface TwentyQuestionsModeProps {
   onPlayTrailer: (movie: Movie) => void;
   onSelectMovie?: (movie: Movie) => void;
-  onLove: (movie: Movie) => void;
-  onDislike: (movie: Movie) => void;
-  onWatchlist: (movie: Movie) => void;
+  onLove?: (movie: Movie) => void;
+  onDislike?: (movie: Movie) => void;
+  onWatchlist?: (movie: Movie) => void;
   onWatched?: (movie: Movie) => void;
-  lovedMovies: Movie[];
-  dislikedMovies: Movie[];
-  watchlistMovies: Movie[];
+  lovedMovies?: Movie[];
+  dislikedMovies?: Movie[];
+  watchlistMovies?: Movie[];
   watchedMovies?: Movie[];
-  tasteSummaryPrompt: string;
+  tasteSummaryPrompt?: string;
 }
 
 interface QuestionDef {
@@ -172,6 +169,47 @@ const PAGE_SIZE = 24;
 const FOUND_THRESHOLD = 3; // celebrate when top matches shrink this small
 const MIN_QS_BEFORE_FOUND = 4;
 
+function isSpaceMovie(movie: Movie): boolean {
+  const title = (movie.title || '').toLowerCase();
+  const text = `${movie.overview || ''} ${movie.tagline || ''}`.toLowerCase();
+  const genres = movie.genres || [];
+  const blob = `${title} ${text}`;
+  // Strong space signals
+  if (
+    /\b(outer space|spaceship|spacecraft|astronaut|nasa|orbit|galaxy|interstellar|mars|moon landing|space station|starship|wormhole|deep space|zero gravity|in space|into space|from space)\b/i.test(
+      blob
+    )
+  ) {
+    return true;
+  }
+  // Title says Space + sci-fi (Spaceballs, Space Oddity… not Office Space)
+  if (/\bspace\b/i.test(title) && genres.includes('Science Fiction')) return true;
+  // Sci-fi overview that clearly mentions space travel / planets
+  if (
+    genres.includes('Science Fiction') &&
+    /\b(space|orbit|astronaut|galaxy|alien|mars|lunar|cosmos)\b/i.test(text)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function isCabinMovie(movie: Movie): boolean {
+  const text = `${movie.title} ${movie.overview || ''}`.toLowerCase();
+  return /\b(cabin|forest|woods|wilderness|isolated|mountain|rural)\b/i.test(text);
+}
+
+function isSummerMovie(movie: Movie): boolean {
+  const text = `${movie.title} ${movie.overview || ''}`.toLowerCase();
+  return /\b(summer|beach|coast|island|vacation|sunlit|seaside)\b/i.test(text);
+}
+
+function isNeonCityMovie(movie: Movie): boolean {
+  const text = `${movie.title} ${movie.overview || ''}`.toLowerCase();
+  return /\b(neon|noir|cyber|cyberpunk|rain-soaked|metropolis|city nightlife)\b/i.test(text)
+    || (/\bcity\b/i.test(text) && /\b(detective|crime|night)\b/i.test(text));
+}
+
 function scoreMovie(movie: Movie, tags: string[]): number {
   let score = (movie.vote_average || 5) * 1.5 + Math.min((movie.vote_count || 0) / 5000, 3);
   const movieText = `${movie.title} ${movie.genres?.join(' ') || ''} ${movie.overview || ''} ${movie.tagline || ''}`.toLowerCase();
@@ -200,10 +238,10 @@ function scoreMovie(movie: Movie, tags: string[]): number {
   if (tags.includes('era_80s') && releaseYear >= 1980 && releaseYear <= 1989) score += 10;
   if (tags.includes('era_classic') && releaseYear > 0 && releaseYear < 1980) score += 10;
 
-  if (tags.includes('space') && (genres.includes('Science Fiction') || /space|galaxy|planet|alien/i.test(movieText))) score += 8;
-  if (tags.includes('neon_noir') && /city|noir|cyber|neon|rain/i.test(movieText)) score += 5;
-  if (tags.includes('cabin') && /cabin|forest|woods|isolated/i.test(movieText)) score += 6;
-  if (tags.includes('summer') && /summer|beach|coast|sun/i.test(movieText)) score += 5;
+  if (tags.includes('space') && isSpaceMovie(movie)) score += 16;
+  if (tags.includes('neon_noir') && isNeonCityMovie(movie)) score += 8;
+  if (tags.includes('cabin') && isCabinMovie(movie)) score += 8;
+  if (tags.includes('summer') && isSummerMovie(movie)) score += 8;
 
   if (tags.includes('complex') && /twist|mystery|memory|puzzle/i.test(movieText)) score += 5;
   if (tags.includes('direct') && genres.includes('Action')) score += 3;
@@ -240,7 +278,7 @@ function hardPasses(movie: Movie, tags: string[]): boolean {
   if (tags.includes('thriller') && !genres.some((g) => ['Thriller', 'Crime', 'Mystery'].includes(g))) return false;
   if (tags.includes('action') && !genres.some((g) => ['Action', 'Adventure'].includes(g))) return false;
   if (tags.includes('scifi') && !genres.some((g) => ['Science Fiction', 'Fantasy'].includes(g))) return false;
-  if (tags.includes('drama') && !genres.includes('Drama') && !tags.includes('any')) return false;
+  if (tags.includes('drama') && !genres.includes('Drama')) return false;
 
   if (tags.includes('era_2020s') && !(releaseYear >= 2020)) return false;
   if (tags.includes('era_2010s') && !(releaseYear >= 2010 && releaseYear <= 2019)) return false;
@@ -253,6 +291,12 @@ function hardPasses(movie: Movie, tags: string[]): boolean {
   if (tags.includes('epic') && runtime < 140) return false;
 
   if (tags.includes('no_gore') && genres.includes('Horror')) return false;
+
+  // Setting answers are HARD filters — Space must actually be space
+  if (tags.includes('space') && !isSpaceMovie(movie)) return false;
+  if (tags.includes('cabin') && !isCabinMovie(movie)) return false;
+  if (tags.includes('summer') && !isSummerMovie(movie)) return false;
+  if (tags.includes('neon_noir') && !isNeonCityMovie(movie)) return false;
 
   return true;
 }
@@ -294,12 +338,6 @@ async function fetchBigPool(genreTag?: string): Promise<Movie[]> {
 export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
   onPlayTrailer,
   onSelectMovie,
-  onLove,
-  onWatchlist,
-  onWatched,
-  lovedMovies,
-  watchlistMovies,
-  watchedMovies = [],
 }) => {
   const [currentStep, setCurrentStep] = useState(0);
   const [answers, setAnswers] = useState<Record<number, { label: string; tag: string }>>({});
@@ -318,7 +356,8 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
       nextTags.length === 0
         ? pool
         : pool.filter((m) => hardPasses(m, nextTags));
-    const working = filtered.length >= 8 ? filtered : pool;
+    // Never fall back to the unfiltered pool — that reintroduces non-matches (e.g. non-space after Space)
+    const working = filtered.length > 0 ? filtered : pool;
     const scored = working
       .map((movie) => ({ movie, score: scoreMovie(movie, nextTags) }))
       .sort((a, b) => b.score - a.score)
@@ -376,10 +415,16 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
     const nextTags = Object.values(nextAnswers).map((a) => a.tag);
 
     // Genre pick → refresh big discover pool for that genre
+    // Space setting → pull sci-fi discover so we have enough real space titles
     let pool = moviePool;
-    if (currentStep === 0 && option.tag !== 'any' && GENRE_TMDB[option.tag]) {
+    const needsGenreRefresh =
+      (currentStep === 0 && option.tag !== 'any' && GENRE_TMDB[option.tag]) ||
+      option.tag === 'space';
+    if (needsGenreRefresh) {
       setIsLoadingPool(true);
-      pool = await fetchBigPool(option.tag);
+      const genreForFetch =
+        option.tag === 'space' ? 'scifi' : option.tag;
+      pool = await fetchBigPool(GENRE_TMDB[genreForFetch] ? genreForFetch : undefined);
       setMoviePool(pool);
       setIsLoadingPool(false);
     }
@@ -470,20 +515,23 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
           </button>
         </div>
         {ranked.length > 1 ? (
-          <div className="w-full mt-2">
+          <div className="w-full mt-2 max-w-md">
             <p className="text-[10px] uppercase font-bold text-neutral-500 mb-1.5 text-center">Also close</p>
-            <div className="flex justify-center gap-2 overflow-x-auto no-scrollbar">
-              {ranked.slice(1, 5).map((m) => (
+            <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">
+              {ranked.slice(1, 13).map((m, i) => (
                 <button
                   key={m.id}
                   type="button"
                   onClick={() => (onSelectMovie ? onSelectMovie(m) : onPlayTrailer(m))}
-                  className="relative w-12 aspect-[2/3] rounded-md overflow-hidden border border-neutral-700 shrink-0"
+                  className="relative aspect-[2/3] rounded-md overflow-hidden border border-neutral-700 hover:border-amber-400 transition"
                   title={m.title}
                 >
                   {m.poster_path ? (
-                    <Image src={m.poster_path} alt="" fill sizes="48px" className="object-cover" unoptimized />
+                    <Image src={m.poster_path} alt="" fill sizes="80px" className="object-cover" unoptimized />
                   ) : null}
+                  <span className="absolute top-0.5 left-0.5 text-[8px] font-black bg-black/70 text-amber-300 px-0.5 rounded">
+                    #{i + 2}
+                  </span>
                 </button>
               ))}
             </div>
@@ -624,58 +672,6 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
                     <span className="absolute top-1 left-1 text-[9px] font-black bg-black/75 text-amber-300 px-1 rounded">
                       #{i + 1}
                     </span>
-                    <div
-                      className="absolute bottom-0 inset-x-0 flex justify-end gap-0.5 p-1 opacity-0 group-hover:opacity-100 transition"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <span
-                        role="button"
-                        tabIndex={0}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onLove(movie);
-                        }}
-                        className={`p-1 rounded bg-black/60 ${
-                          lovedMovies.some((m) => String(m.id) === String(movie.id))
-                            ? 'text-red-400'
-                            : 'text-white'
-                        }`}
-                      >
-                        <Heart className="w-3 h-3 fill-current" />
-                      </span>
-                      <span
-                        role="button"
-                        tabIndex={0}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onWatchlist(movie);
-                        }}
-                        className={`p-1 rounded bg-black/60 ${
-                          watchlistMovies.some((m) => String(m.id) === String(movie.id))
-                            ? 'text-amber-400'
-                            : 'text-white'
-                        }`}
-                      >
-                        <Bookmark className="w-3 h-3 fill-current" />
-                      </span>
-                      {onWatched ? (
-                        <span
-                          role="button"
-                          tabIndex={0}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onWatched(movie);
-                          }}
-                          className={`p-1 rounded bg-black/60 ${
-                            watchedMovies.some((m) => String(m.id) === String(movie.id))
-                              ? 'text-emerald-400'
-                              : 'text-white'
-                          }`}
-                        >
-                          <Check className="w-3 h-3" />
-                        </span>
-                      ) : null}
-                    </div>
                   </div>
                   <span className="text-[10px] sm:text-[11px] font-semibold text-neutral-200 truncate leading-tight px-0.5">
                     {movie.title}
