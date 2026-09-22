@@ -48,6 +48,57 @@ export interface LiveDiscoverFilters {
   with_original_language?: string;
 }
 
+// ── Smart Question Implication Matrices ───────────────────────────────────────
+
+export const MUTUAL_EXCLUSIONS: Record<string, string[]> = {
+  // Kids/Family/Animated -> Skip heavy genres
+  animated: ['horror', 'crime', 'war', 'thriller', 'theme_animated', 'theme_villain_powers'],
+  disney_pixar: ['horror', 'crime', 'war', 'thriller', 'theme_disney', 'theme_villain_powers'],
+  theme_animated: ['horror', 'crime', 'war', 'thriller', 'animated', 'theme_villain_powers'],
+  theme_disney: ['horror', 'crime', 'war', 'thriller', 'disney_pixar', 'theme_villain_powers'],
+  theme_family_children: ['horror', 'crime', 'war', 'thriller'],
+  theme_school_young: ['horror', 'war'],
+
+  // Heavy Genres -> Skip Kids/Family/Light
+  horror: ['animated', 'disney_pixar', 'theme_animated', 'theme_disney', 'theme_family_children', 'musical', 'theme_singing_songs', 'comedy', 'theme_humor_comedy', 'sports', 'romance', 'theme_romance_love', 'theme_school_young', 'theme_animals', 'animal_protagonist', 'theme_royal_kingdom'],
+  crime: ['animated', 'disney_pixar', 'theme_animated', 'theme_disney', 'theme_family_children', 'musical', 'theme_singing_songs', 'theme_animals', 'fantasy_magic', 'theme_royal_kingdom', 'animal_protagonist'],
+  war: ['animated', 'disney_pixar', 'theme_animated', 'theme_disney', 'theme_family_children', 'musical', 'theme_singing_songs', 'theme_animals', 'comedy', 'theme_humor_comedy', 'romance', 'theme_romance_love', 'animal_protagonist', 'theme_school_young'],
+  thriller: ['animated', 'disney_pixar', 'theme_animated', 'theme_disney', 'theme_family_children', 'musical', 'theme_singing_songs', 'comedy', 'theme_humor_comedy', 'theme_animals', 'animal_protagonist'],
+
+  // Direct conceptual overlaps
+  musical: ['theme_singing_songs'],
+  theme_singing_songs: ['musical'],
+  fantasy_magic: ['theme_magic_spells'],
+  theme_magic_spells: ['fantasy_magic'],
+  outer_space: ['theme_space_futuristic'],
+  theme_space_futuristic: ['outer_space'],
+  romance: ['theme_romance_love'],
+  theme_romance_love: ['romance'],
+  comedy: ['theme_humor_comedy'],
+  theme_humor_comedy: ['comedy'],
+  animal_protagonist: ['theme_animals'],
+  theme_animals: ['animal_protagonist'],
+};
+
+export const EQUIVALENT_QUESTIONS: Record<string, string[]> = {
+  animated: ['theme_animated'],
+  theme_animated: ['animated'],
+  disney_pixar: ['theme_disney'],
+  theme_disney: ['disney_pixar'],
+  musical: ['theme_singing_songs'],
+  theme_singing_songs: ['musical'],
+  fantasy_magic: ['theme_magic_spells'],
+  theme_magic_spells: ['fantasy_magic'],
+  outer_space: ['theme_space_futuristic'],
+  theme_space_futuristic: ['outer_space'],
+  romance: ['theme_romance_love'],
+  theme_romance_love: ['romance'],
+  comedy: ['theme_humor_comedy'],
+  theme_humor_comedy: ['comedy'],
+  animal_protagonist: ['theme_animals'],
+  theme_animals: ['animal_protagonist'],
+};
+
 export function createInitialFilters(): LiveDiscoverFilters {
   return {
     with_genres: new Set(),
@@ -140,18 +191,18 @@ export const QUESTION_BANK: WizardQuestion[] = [
     onNo: { primary_release_date_lte: '2000-12-31' },
   },
   {
-    id: 'era_2010s',
-    question: 'Was it released in the 2010s or later?',
-    hint: '2010 to present day',
+    id: 'era_pre2010',
+    question: 'Was it released before the year 2010?',
+    hint: '2009 or earlier',
     isEra: true,
     match: (m) => {
       const y = Number(m.release_date?.slice(0, 4) || 0);
-      if (y >= 2010) return 1.0;
-      if (y >= 2007) return 0.4;
+      if (y < 2010) return 1.0;
+      if (y <= 2012) return 0.4;
       return 0;
     },
-    onYes: { primary_release_date_gte: '2010-01-01' },
-    onNo: { primary_release_date_lte: '2009-12-31' },
+    onYes: { primary_release_date_lte: '2009-12-31' },
+    onNo: { primary_release_date_gte: '2010-01-01' },
   },
   {
     id: 'era_90s',
@@ -192,6 +243,9 @@ export const QUESTION_BANK: WizardQuestion[] = [
     match: (m) => {
       const t = `${m.title || ''} ${m.overview || ''}`.toLowerCase();
       if (t.includes('disney') || t.includes('pixar')) return 1.0;
+      if (m.genres?.some(g => g.toLowerCase().includes('family') || g.toLowerCase().includes('animation'))) {
+        return 0.5; 
+      }
       return 0;
     },
     onYes: { with_companies: '2|3' },

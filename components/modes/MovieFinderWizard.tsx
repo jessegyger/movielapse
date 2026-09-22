@@ -30,6 +30,9 @@ import {
   fetchTopActorsForCandidates,
   generateDynamicQuestion,
   ActorCandidate,
+  POPULAR_STUDIOS,
+  MUTUAL_EXCLUSIONS,
+  EQUIVALENT_QUESTIONS,
 } from '@/lib/tmdb/movieFinder';
 
 interface MovieFinderWizardProps {
@@ -274,12 +277,23 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
 
       let eraAnswered = hasAnsweredEra;
 
-      // Smart mutual exclusion: if user answers Yes to animation/family, skip crime/horror/war
+      const newAsked = new Set(askedIds);
+      newAsked.add(currentQuestion.id);
+
+      // ── Smart Question Implication ──
       if (answer === 'yes') {
-        if (currentQuestion.id === 'animated' || currentQuestion.id === 'family_kids' || currentQuestion.id === 'disney_pixar') {
-          askedIds.add('crime');
-          askedIds.add('war');
-          askedIds.add('horror');
+        // Exclude completely opposite genres
+        if (MUTUAL_EXCLUSIONS[currentQuestion.id]) {
+          MUTUAL_EXCLUSIONS[currentQuestion.id].forEach(id => newAsked.add(id));
+        }
+        // Also skip the 'equivalent' question so we don't ask it dynamically
+        if (EQUIVALENT_QUESTIONS[currentQuestion.id]) {
+          EQUIVALENT_QUESTIONS[currentQuestion.id].forEach(id => newAsked.add(id));
+        }
+      } else if (answer === 'skip' || answer === 'no' || answer === 'sometimes') {
+        // If they skip or say NO to a concept, don't ask the dynamic/static counterpart!
+        if (EQUIVALENT_QUESTIONS[currentQuestion.id]) {
+          EQUIVALENT_QUESTIONS[currentQuestion.id].forEach(id => newAsked.add(id));
         }
       }
 
@@ -309,8 +323,6 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
       setHasAnsweredEra(eraAnswered);
 
       const newHistory = [...history, { q: currentQuestion, answer }];
-      const newAsked = new Set(askedIds);
-      newAsked.add(currentQuestion.id);
       const newCount = questionCount + 1;
 
       setHistory(newHistory);
