@@ -1,10 +1,24 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import confetti from 'canvas-confetti';
-import { Sparkles, ArrowRight, RotateCcw, Check, MessageSquare } from 'lucide-react';
+import {
+  Sparkles,
+  ArrowRight,
+  RotateCcw,
+  Check,
+  Play,
+  Heart,
+  Bookmark,
+  Tv,
+  Film,
+  Zap,
+  ChevronRight,
+  ChevronLeft
+} from 'lucide-react';
+import Image from 'next/image';
 import { Movie } from '@/lib/tmdb/types';
-import { MovieCard } from '../movie/MovieCard';
+import { tmdb } from '@/lib/tmdb/client';
 import { webllmEngine } from '@/lib/webllm/engine';
 
 interface TwentyQuestionsModeProps {
@@ -22,121 +36,174 @@ interface QuestionDef {
   id: number;
   question: string;
   subtitle: string;
-  options: string[];
+  options: { label: string; tag: string; icon: string }[];
 }
 
 const QUESTION_BANK: QuestionDef[] = [
   {
     id: 1,
-    question: "What kind of energy or emotional vibe are you craving tonight?",
+    question: "What vibe are you craving tonight?",
     subtitle: "Select the dominant impulse of your evening",
     options: [
-      "🧠 Mind-Bending & Existential",
-      "⚡ High-Octane Adrenaline",
-      "☕ Cozy, Melancholy & Thoughtful",
-      "🕵️ Dark, Tense & Gripping Mystery",
-      "😂 Laugh-Out-Loud Escapism",
+      { label: "Mind-Bending & Existential", tag: "mind_bending", icon: "🧠" },
+      { label: "High-Octane Adrenaline", tag: "action", icon: "⚡" },
+      { label: "Cozy, Melancholy & Thoughtful", tag: "drama", icon: "☕" },
+      { label: "Dark, Tense & Gripping Mystery", tag: "thriller", icon: "🕵️" },
+      { label: "Laugh-Out-Loud Escapism", tag: "comedy", icon: "😂" },
+      { label: "Feel-Good & Inspiring", tag: "uplifting", icon: "❤️" },
     ],
   },
   {
     id: 2,
     question: "What is your pacing tolerance?",
-    subtitle: "How fast do you need the plot engine to rev?",
+    subtitle: "How fast do you need the narrative engine to run?",
     options: [
-      "🎢 Non-stop kinetic rollercoaster",
-      "🕯️ Atmospheric, slow-burn masterpiece",
-      "⏱️ Punchy sub-100 minute tight script",
-      "🌌 Expansive, immersive 2.5hr+ epic",
+      { label: "Non-stop kinetic rollercoaster", tag: "fast", icon: "🎢" },
+      { label: "Atmospheric, slow-burn tension", tag: "slow", icon: "🕯️" },
+      { label: "Punchy sub-100 minute tight script", tag: "short", icon: "⏱️" },
+      { label: "Expansive, immersive 2.5hr+ epic", tag: "epic", icon: "🌌" },
     ],
   },
   {
     id: 3,
-    question: "Which era and aesthetic appeals to you right now?",
+    question: "Which era and aesthetic appeals right now?",
     subtitle: "The visual language and decade tone",
     options: [
-      "🏙️ Modern Sleek (2018–2025)",
-      "📼 90s & 2000s Peak Genre Gold",
-      "📻 70s & 80s Gritty Grain & Practical Effects",
-      "🎞️ Golden Age Classic Cinema",
+      { label: "Modern Sleek (2018–2025)", tag: "modern", icon: "🏙️" },
+      { label: "90s & 2000s Peak Genre Cinema", tag: "90s_00s", icon: "📼" },
+      { label: "70s & 80s Gritty Grain & Practical FX", tag: "retro", icon: "📻" },
+      { label: "Timeless Golden Age Cinema", tag: "classic", icon: "🎞️" },
     ],
   },
   {
     id: 4,
-    question: "Who is in the room with you tonight?",
-    subtitle: "Tailoring tone and crowd compatibility",
+    question: "What visual atmosphere sets the mood?",
+    subtitle: "Worldbuilding and environmental tone",
     options: [
-      "🎧 Flying solo with total immersion",
-      "🥂 Date night / Partner cuddle watch",
-      "🍿 Group of friends / Crowd pleaser",
-      "🛋️ Family or mixed generation watch",
+      { label: "Rainy neon noir & cyberpunk cities", tag: "neon_noir", icon: "🌧️" },
+      { label: "Warm sunlit coastal & summer breeze", tag: "summer", icon: "☀️" },
+      { label: "Misty pine woods & isolated cabins", tag: "cabin", icon: "🌲" },
+      { label: "Vast silent deep space & cosmic void", tag: "space", icon: "🚀" },
     ],
   },
   {
     id: 5,
-    question: "What visual atmosphere sets the right mood?",
-    subtitle: "Lighting, worldbuilding, and setting",
+    question: "How complex should the narrative puzzle be?",
+    subtitle: "How hard do you want your brain to work?",
     options: [
-      "🌧️ Rainy neon noir & dystopian cities",
-      "☀️ Warm sunlit coastal / idyllic summer",
-      "🌲 Misty pine forests & isolated cabins",
-      "🚀 Vast silent space & cosmic emptiness",
+      { label: "Whiteboard puzzle with crazy twists", tag: "complex", icon: "🧩" },
+      { label: "Razor-sharp, straightforward high-stakes", tag: "direct", icon: "🎯" },
+      { label: "Ambiguous & poetic ending that lingers", tag: "ambiguous", icon: "💭" },
     ],
   },
   {
     id: 6,
-    question: "Any strict dealbreakers for tonight?",
-    subtitle: "We will actively filter these out",
+    question: "What is the ultimate goal of tonight's watch?",
+    subtitle: "The lasting feeling when the credits roll",
     options: [
-      "🚫 No jump scares or extreme gore",
-      "🚫 No depressing, gut-punch tragedy endings",
-      "🚫 No cheesy romance or cliché tropes",
-      "🔥 Zero restrictions: hit me with raw cinema",
+      { label: "Jaw on the floor in pure shock", tag: "shock", icon: "🤯" },
+      { label: "Deeply moved & emotionally refreshed", tag: "emotional", icon: "❤️" },
+      { label: "Pumped up with pure hype & adrenaline", tag: "hype", icon: "🔥" },
+      { label: "Unwind completely with supreme storytelling", tag: "relax", icon: "🛋️" },
     ],
   },
+  // Additional questions for 12 Questions (Deep Mode)
   {
     id: 7,
-    question: "How complex should the narrative puzzle be?",
-    subtitle: "How hard do you want your brain to work?",
+    question: "Who is in the room with you tonight?",
+    subtitle: "Tailoring crowd tone and compatibility",
     options: [
-      "🧩 Mind-knotting puzzle with twists that require a whiteboard",
-      "🎯 Straightforward, razor-sharp execution with high stakes",
-      "💭 Ambiguous ending that lingers for days",
+      { label: "Solo watch with total immersion", tag: "solo", icon: "🎧" },
+      { label: "Date night / Partner watch", tag: "date", icon: "🥂" },
+      { label: "Group of friends / Crowd pleaser", tag: "friends", icon: "🍿" },
+      { label: "Family or mixed generations", tag: "family", icon: "🛋️" },
     ],
   },
   {
     id: 8,
-    question: "What kind of lead character do you want to follow?",
-    subtitle: "The emotional anchor of the film",
+    question: "What kind of protagonist do you want to follow?",
+    subtitle: "The emotional anchor of the journey",
     options: [
-      "⚖️ Complex, morally gray antihero",
-      "⚡ Reluctant everyday person in extraordinary danger",
-      "🔬 Obsessive genius pushed to the brink",
-      "🤝 Dynamic charismatic ensemble / buddy duo",
+      { label: "Complex, morally gray antihero", tag: "antihero", icon: "⚖️" },
+      { label: "Reluctant everyday person in danger", tag: "reluctant", icon: "⚡" },
+      { label: "Obsessive genius pushed to the brink", tag: "obsessive", icon: "🔬" },
+      { label: "Charismatic ensemble / buddy dynamic", tag: "duo", icon: "🤝" },
     ],
   },
   {
     id: 9,
     question: "What musical texture should drive the film?",
-    subtitle: "The sonic pulse",
+    subtitle: "The sonic pulse of the score",
     options: [
-      "🎹 Hypnotic analog synth / electronic pulse",
-      "🎻 Thundering, monumental orchestral score",
-      "🎷 Intimate jazz, acoustic & atmospheric silence",
-      "🎸 Grungy guitar & curated vintage needle-drops",
+      { label: "Hypnotic analog synth / electronic pulse", tag: "synth", icon: "🎹" },
+      { label: "Monumental, thundering orchestral score", tag: "orchestral", icon: "🎻" },
+      { label: "Intimate acoustic, jazz & evocative silence", tag: "jazz", icon: "🎷" },
+      { label: "Vintage needle-drops & grungy rock", tag: "rock", icon: "🎸" },
     ],
   },
   {
     id: 10,
-    question: "Final gut check: What's the main goal of tonight's watch?",
-    subtitle: "The lasting feeling when the credits roll",
+    question: "Any strict dealbreakers for tonight?",
+    subtitle: "We will actively filter these out",
     options: [
-      "🤯 To have my jaw on the floor in pure shock",
-      "❤️ To feel deeply moved and emotionally refreshed",
-      "🔥 To feel pumped up with pure hype and energy",
-      "🛋️ To unwind completely with world-class storytelling",
+      { label: "No jump scares or gore", tag: "no_gore", icon: "🚫" },
+      { label: "No depressing, gut-punch tragedy", tag: "no_tragedy", icon: "🚫" },
+      { label: "No cheesy romance or cliché tropes", tag: "no_cliches", icon: "🚫" },
+      { label: "Zero restrictions: hit me with raw cinema", tag: "raw", icon: "🔥" },
+    ],
+  },
+  {
+    id: 11,
+    question: "What emotional color palette fits best?",
+    subtitle: "Tone and perspective",
+    options: [
+      { label: "Dark, cynical & razor-sharp satire", tag: "satire", icon: "🖤" },
+      { label: "Warm, luminous & humanistic", tag: "warm", icon: "🌅" },
+      { label: "Melancholic, bittersweet nostalgia", tag: "nostalgia", icon: "🍂" },
+      { label: "Surreal, dreamlike & hypnotic", tag: "surreal", icon: "🔮" },
+    ],
+  },
+  {
+    id: 12,
+    question: "Directing style & cinematic camera work?",
+    subtitle: "How the director tells the story",
+    options: [
+      { label: "Fluid long-takes & visual mastery", tag: "long_takes", icon: "🎥" },
+      { label: "Kinetic cutting & stylish flair", tag: "kinetic", icon: "✂️" },
+      { label: "Symmetrical, painterly tableau frames", tag: "painterly", icon: "🖼️" },
+      { label: "Grounded, gritty handheld realism", tag: "gritty", icon: "📹" },
     ],
   },
 ];
+
+const getProviderStyle = (name: string) => {
+  const norm = name.toLowerCase();
+  if (norm.includes('netflix')) {
+    return { bg: 'bg-red-950/90 border-red-600/70 text-red-200', text: 'Netflix', logo: 'https://image.tmdb.org/t/p/original/9A1JSVmSxsyaBK4SUFsYVqbAYfW.jpg' };
+  }
+  if (norm.includes('prime') || norm.includes('amazon')) {
+    return { bg: 'bg-sky-950/90 border-sky-500/70 text-sky-200', text: 'Prime Video', logo: 'https://image.tmdb.org/t/p/original/pbpMk2JmcoNnQwx5JGpXngfoWtp.jpg' };
+  }
+  if (norm.includes('disney')) {
+    return { bg: 'bg-blue-950/90 border-blue-500/70 text-blue-200', text: 'Disney+', logo: 'https://image.tmdb.org/t/p/original/7rwgEs15tFwyR9NPQ5vpzxTj19Q.jpg' };
+  }
+  if (norm.includes('max') || norm.includes('hbo')) {
+    return { bg: 'bg-purple-950/90 border-purple-500/70 text-purple-200', text: 'Max', logo: 'https://image.tmdb.org/t/p/original/aS2zvJWn9mwiCOeaaCkIh4w00dD.jpg' };
+  }
+  if (norm.includes('hulu')) {
+    return { bg: 'bg-emerald-950/90 border-emerald-500/70 text-emerald-200', text: 'Hulu', logo: 'https://image.tmdb.org/t/p/original/giwM8L5DaFMTEG1Qg2G2tzxsYvg.jpg' };
+  }
+  if (norm.includes('paramount')) {
+    return { bg: 'bg-blue-900/90 border-blue-500 text-blue-100', text: 'Paramount+', logo: 'https://image.tmdb.org/t/p/original/fi83B1oztoS47xxcemFdPMhIzK.jpg' };
+  }
+  if (norm.includes('apple')) {
+    return { bg: 'bg-neutral-800/90 border-neutral-600 text-neutral-100', text: 'Apple TV+', logo: 'https://image.tmdb.org/t/p/original/6uhKBfmtzFqOcLousHwZuzcrScK.jpg' };
+  }
+  if (norm.includes('peacock')) {
+    return { bg: 'bg-amber-950/90 border-amber-600/70 text-amber-200', text: 'Peacock', logo: 'https://image.tmdb.org/t/p/original/8VCV78ehT9YImCcDTRAR292278b.jpg' };
+  }
+  return { bg: 'bg-neutral-800 border-neutral-700 text-neutral-300', text: name, logo: undefined };
+};
 
 export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
   onPlayTrailer,
@@ -148,45 +215,160 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
   watchlistMovies,
   tasteSummaryPrompt,
 }) => {
-  const [totalQuestions, setTotalQuestions] = useState<10 | 20>(10);
+  // 6 Questions (Quick Pick) default, 12 Questions (Deep) optional
+  const [totalQuestions, setTotalQuestions] = useState<6 | 12>(6);
   const [currentStep, setCurrentStep] = useState<number>(0);
-  const [answers, setAnswers] = useState<Record<number, string>>({});
+  const [answers, setAnswers] = useState<Record<number, { label: string; tag: string }>>({});
   const [customInput, setCustomInput] = useState<string>('');
   const [isConsultingAI, setIsConsultingAI] = useState<boolean>(false);
   const [results, setResults] = useState<Movie[]>([]);
   const [aiVerdict, setAiVerdict] = useState<string>('');
 
+  // Live Instant Recommendations state
+  const [moviePool, setMoviePool] = useState<Movie[]>([]);
+  const [liveRecommendations, setLiveRecommendations] = useState<Movie[]>([]);
+  const [mobileTab, setMobileTab] = useState<'question' | 'live_picks'>('question');
+
+  // Initialize seed catalog and enrich with streaming providers
+  useEffect(() => {
+    let isMounted = true;
+    const initPool = async () => {
+      const seeds = tmdb.getSeedMovies();
+      const enriched = await tmdb.enrichMoviesWithProviders(seeds, 10);
+      if (isMounted) {
+        setMoviePool(enriched);
+        setLiveRecommendations(enriched.slice(0, 4));
+      }
+    };
+    initPool();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const currentQ = QUESTION_BANK[currentStep % QUESTION_BANK.length];
   const answeredCount = Object.keys(answers).length;
 
-  const handleSelectOption = (option: string) => {
-    setAnswers((prev) => ({ ...prev, [currentStep]: option }));
+  // Real-time live recommendation matcher as user answers each question
+  const computeLiveMatches = (currentAnswers: Record<number, { label: string; tag: string }>) => {
+    if (moviePool.length === 0) return;
+
+    const tags = Object.values(currentAnswers).map((a) => a.tag);
+    if (tags.length === 0) {
+      setLiveRecommendations(moviePool.slice(0, 4));
+      return;
+    }
+
+    // Score movies based on chosen criteria
+    const scored = moviePool.map((movie) => {
+      let score = movie.vote_average * 1.5;
+      const movieText = `${movie.title} ${movie.genres.join(' ')} ${movie.overview} ${movie.tagline || ''}`.toLowerCase();
+      const releaseYear = parseInt(movie.release_date?.slice(0, 4) || '2015', 10);
+      const runtime = movie.runtime || 120;
+
+      // 1. Vibe matching
+      if (tags.includes('mind_bending')) {
+        if (movie.genres.some((g) => ['Science Fiction', 'Mystery', 'Thriller'].includes(g))) score += 7;
+        if (/reality|mind|simulation|dream|dimension|space|memory|time/i.test(movieText)) score += 5;
+      }
+      if (tags.includes('action')) {
+        if (movie.genres.some((g) => ['Action', 'Adventure'].includes(g))) score += 7;
+        if (/chase|war|fight|danger|mission|fury|speed/i.test(movieText)) score += 4;
+      }
+      if (tags.includes('drama')) {
+        if (movie.genres.some((g) => ['Drama', 'Romance'].includes(g))) score += 7;
+        if (/love|relationship|melancholy|heart|family|lonely/i.test(movieText)) score += 4;
+      }
+      if (tags.includes('thriller')) {
+        if (movie.genres.some((g) => ['Thriller', 'Crime', 'Mystery'].includes(g))) score += 7;
+        if (/detective|murder|killer|investigation|secret|conspiracy/i.test(movieText)) score += 5;
+      }
+      if (tags.includes('comedy')) {
+        if (movie.genres.includes('Comedy')) score += 8;
+      }
+      if (tags.includes('uplifting')) {
+        if (movie.genres.some((g) => ['Animation', 'Family', 'Drama'].includes(g))) score += 6;
+      }
+
+      // 2. Pacing matching
+      if (tags.includes('fast') && runtime <= 135) score += 4;
+      if (tags.includes('slow') && (movie.genres.includes('Drama') || movie.genres.includes('Mystery'))) score += 4;
+      if (tags.includes('short') && runtime <= 105) score += 6;
+      if (tags.includes('epic') && runtime >= 145) score += 6;
+
+      // 3. Era matching
+      if (tags.includes('modern') && releaseYear >= 2018) score += 5;
+      if (tags.includes('90s_00s') && releaseYear >= 1990 && releaseYear <= 2010) score += 6;
+      if (tags.includes('retro') && releaseYear >= 1970 && releaseYear <= 1989) score += 6;
+      if (tags.includes('classic') && releaseYear < 1970) score += 6;
+
+      // 4. Setting matching
+      if (tags.includes('space') && (movie.genres.includes('Science Fiction') || /space|wormhole|star|galaxy/i.test(movieText))) score += 6;
+      if (tags.includes('neon_noir') && (movieText.includes('blade') || movieText.includes('future') || movieText.includes('cyber'))) score += 6;
+
+      // 5. Narrative goal
+      if (tags.includes('shock') && (movieText.includes('twist') || movie.genres.includes('Mystery') || movie.vote_average >= 8.2)) score += 4;
+      if (tags.includes('hype') && movie.genres.includes('Action')) score += 5;
+
+      return { movie, score };
+    });
+
+    scored.sort((a, b) => b.score - a.score);
+    const topPicks = scored.slice(0, 4).map((item) => {
+      const topTag = tags[0];
+      let reason = 'Top match for your taste';
+      if (topTag === 'mind_bending') reason = 'Mind-bending & existential journey';
+      else if (topTag === 'action') reason = 'High-octane adrenaline rush';
+      else if (topTag === 'drama') reason = 'Cozy, poignant & thoughtfully crafted';
+      else if (topTag === 'thriller') reason = 'Dark, razor-sharp tension';
+      else if (topTag === 'comedy') reason = 'Laugh-out-loud escapism';
+
+      return {
+        ...item.movie,
+        ai_match_reason: reason,
+      };
+    });
+
+    setLiveRecommendations(topPicks);
+
+    // Enrich top 4 in the background so streaming providers are updated
+    tmdb.enrichMoviesWithProviders(topPicks, 4).then((fresh) => {
+      setLiveRecommendations(fresh);
+    });
+  };
+
+  const handleSelectOption = (option: { label: string; tag: string }) => {
+    const nextAnswers = { ...answers, [currentStep]: option };
+    setAnswers(nextAnswers);
     setCustomInput('');
+
+    // Update live recommendations immediately
+    computeLiveMatches(nextAnswers);
 
     if (currentStep < totalQuestions - 1) {
       setCurrentStep((prev) => prev + 1);
     } else {
-      finalizeRecommendations({ ...answers, [currentStep]: option });
+      finalizeRecommendations(nextAnswers);
     }
   };
 
   const handleCustomSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!customInput.trim()) return;
-    handleSelectOption(customInput.trim());
+    handleSelectOption({ label: customInput.trim(), tag: 'custom' });
   };
 
-  const finalizeRecommendations = async (finalAnswers: Record<number, string>) => {
+  const finalizeRecommendations = async (finalAnswers: Record<number, { label: string; tag: string }>) => {
     setIsConsultingAI(true);
 
     const answersSummary = Object.entries(finalAnswers)
-      .map(([step, ans]) => `Q${Number(step) + 1}: ${ans}`)
+      .map(([step, ans]) => `Q${Number(step) + 1}: ${ans.label}`)
       .join('\n');
 
-    const promptMessage = `The user just finished the Cinephile Questionnaire with these exact preferences:
+    const promptMessage = `The user completed the Movie Sommelier with these preferences:
 ${answersSummary}
 
-Recommend the top 3 tailored movie picks that perfectly fulfill this mood. For each pick, provide the exact title, release year, and a compelling 1-sentence reason why it fits this specific mood.`;
+Recommend the top 3 tailored movie picks. For each pick, give the exact title, release year, and a compelling 1-sentence reason why it fits this mood.`;
 
     try {
       const response = await webllmEngine.chat(
@@ -194,10 +376,11 @@ Recommend the top 3 tailored movie picks that perfectly fulfill this mood. For e
         tasteSummaryPrompt
       );
 
+      const enrichedResults = await tmdb.enrichMoviesWithProviders(response.recommendedMovies, 3);
       setAiVerdict(response.text);
-      setResults(response.recommendedMovies);
+      setResults(enrichedResults.length > 0 ? enrichedResults : liveRecommendations.slice(0, 3));
 
-      // Trigger celebratory confetti
+      // Confetti celebration
       confetti({
         particleCount: 80,
         spread: 70,
@@ -205,7 +388,8 @@ Recommend the top 3 tailored movie picks that perfectly fulfill this mood. For e
         colors: ['#f59e0b', '#fbbf24', '#ffffff'],
       });
     } catch (err) {
-      console.error('Error generating 20 questions recommendation', err);
+      console.error('Error generating questionnaire recommendation', err);
+      setResults(liveRecommendations.slice(0, 3));
     } finally {
       setIsConsultingAI(false);
     }
@@ -216,63 +400,159 @@ Recommend the top 3 tailored movie picks that perfectly fulfill this mood. For e
     setCurrentStep(0);
     setResults([]);
     setAiVerdict('');
+    setLiveRecommendations(moviePool.slice(0, 4));
+    setMobileTab('question');
   };
 
-  // If showing results
+  // If showing final AI synthesis results
   if (results.length > 0 || isConsultingAI) {
     return (
-      <div className="w-full max-w-5xl mx-auto py-6 px-4 animate-fade-in">
-        {/* Results Header */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-semibold mb-3">
-            <Sparkles className="w-4 h-4" /> Cinephile Sommelier Verdict
+      <div className="w-full max-w-6xl mx-auto h-[calc(100vh-7.5rem)] max-h-[calc(100vh-7.5rem)] overflow-y-auto px-4 py-3 flex flex-col justify-between animate-fade-in">
+        <div className="text-center mb-4">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-semibold mb-2">
+            <Sparkles className="w-3.5 h-3.5" /> Cinephile Sommelier Verdict
           </div>
-          <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-            Tonight&apos;s Perfect Cinematic Matches
+          <h2 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight">
+            Tonight&apos;s Tailored Cinematic Matches
           </h2>
-          <p className="text-sm text-neutral-400 mt-1 max-w-xl mx-auto">
-            Drawn from your questionnaire choices and personalized taste profile.
+          <p className="text-xs text-neutral-400 mt-0.5">
+            Drawn from your questionnaire choices with verified streaming availability.
           </p>
 
           <button
             onClick={handleReset}
-            className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-xs font-semibold text-neutral-300 transition"
+            className="mt-2.5 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-xs font-semibold text-neutral-300 transition"
           >
-            <RotateCcw className="w-3.5 h-3.5" /> Start New Questionnaire
+            <RotateCcw className="w-3.5 h-3.5" /> Start New Sommelier
           </button>
         </div>
 
         {isConsultingAI ? (
-          <div className="flex flex-col items-center justify-center p-16 text-center">
-            <div className="w-12 h-12 border-4 border-amber-500 border-t-transparent rounded-full animate-spin mb-4" />
-            <p className="text-lg font-bold text-white">Synthesizing your cinematic taste...</p>
-            <p className="text-xs text-neutral-400 mt-1">Cross-referencing tropes, pacing, and mood</p>
+          <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
+            <div className="w-10 h-10 border-4 border-amber-500 border-t-transparent rounded-full animate-spin mb-3" />
+            <p className="text-base font-bold text-white">Synthesizing your cinematic taste...</p>
+            <p className="text-xs text-neutral-400 mt-1">Cross-referencing tropes, pacing, and regional streaming</p>
           </div>
         ) : (
-          <div>
-            {/* Movie Cards Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {results.map((movie) => (
-                <MovieCard
-                  key={movie.id}
-                  movie={movie}
-                  onPlayTrailer={onPlayTrailer}
-                  onLove={onLove}
-                  onDislike={onDislike}
-                  onWatchlist={onWatchlist}
-                  isLoved={lovedMovies.some((m) => String(m.id) === String(movie.id))}
-                  isDisliked={dislikedMovies.some((m) => String(m.id) === String(movie.id))}
-                  isWatchlist={watchlistMovies.some((m) => String(m.id) === String(movie.id))}
-                />
-              ))}
+          <div className="flex-1 flex flex-col justify-between overflow-hidden">
+            {/* Movie Cards Showcase */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 overflow-y-auto max-h-[calc(100vh-16rem)] p-1">
+              {results.map((movie) => {
+                const streamP = movie.streaming_providers?.find((p) => p.type === 'stream') || movie.streaming_providers?.[0];
+                const pStyle = streamP ? getProviderStyle(streamP.name) : null;
+
+                return (
+                  <div
+                    key={movie.id}
+                    className="group relative bg-neutral-900/90 border border-neutral-800/90 hover:border-amber-500/50 rounded-2xl p-3 flex flex-col justify-between shadow-xl transition-all"
+                  >
+                    <div className="flex gap-3">
+                      {/* Compact Poster */}
+                      <div className="relative w-24 aspect-[2/3] shrink-0 rounded-xl overflow-hidden bg-neutral-950">
+                        {movie.poster_path ? (
+                          <Image
+                            src={movie.poster_path}
+                            alt={movie.title}
+                            fill
+                            sizes="120px"
+                            className="object-cover group-hover:scale-105 transition-transform duration-300"
+                            unoptimized={movie.poster_path.startsWith('http')}
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-xl">🎬</div>
+                        )}
+                        <button
+                          onClick={() => onPlayTrailer(movie)}
+                          className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <span className="p-2 bg-amber-500 text-black rounded-full shadow-lg">
+                            <Play className="w-4 h-4 fill-current ml-0.5" />
+                          </span>
+                        </button>
+                      </div>
+
+                      {/* Content */}
+                      <div className="flex-1 flex flex-col justify-between min-w-0">
+                        <div>
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <span className="text-amber-400 font-bold text-xs">
+                              ★ {movie.vote_average ? movie.vote_average.toFixed(1) : '8.0'}
+                            </span>
+                            <span className="text-neutral-500 text-xs">•</span>
+                            <span className="text-neutral-400 text-xs">
+                              {movie.release_date?.slice(0, 4)}
+                            </span>
+                          </div>
+
+                          <h3 className="text-sm font-bold text-white leading-tight truncate group-hover:text-amber-400 transition-colors">
+                            {movie.title}
+                          </h3>
+
+                          {/* Streaming Badge */}
+                          {pStyle && streamP && streamP.name !== 'Available Online' && (
+                            <div className={`mt-2 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border text-[11px] font-bold shadow-sm backdrop-blur-md ${pStyle.bg}`}>
+                              {pStyle.logo ? (
+                                <img src={pStyle.logo} alt="" className="w-3.5 h-3.5 rounded object-contain shrink-0" />
+                              ) : (
+                                <Tv className="w-3 h-3 text-amber-400" />
+                              )}
+                              <span>Watch on {pStyle.text}</span>
+                            </div>
+                          )}
+
+                          {movie.ai_match_reason && (
+                            <p className="mt-2 text-[11px] text-amber-300/90 leading-snug line-clamp-2 bg-amber-500/10 p-1.5 rounded-lg border border-amber-500/20">
+                              ⚡ {movie.ai_match_reason}
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Action buttons */}
+                        <div className="mt-2 pt-2 border-t border-neutral-800/80 flex items-center justify-between">
+                          <button
+                            onClick={() => onPlayTrailer(movie)}
+                            className="text-xs font-semibold text-amber-400 hover:text-amber-300 flex items-center gap-1 transition"
+                          >
+                            <Play className="w-3.5 h-3.5 fill-current" /> Watch Trailer
+                          </button>
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => onLove(movie)}
+                              title="Love"
+                              className={`p-1.5 rounded-lg transition ${
+                                lovedMovies.some((m) => String(m.id) === String(movie.id))
+                                  ? 'text-red-500 bg-red-500/10'
+                                  : 'text-neutral-400 hover:text-white'
+                              }`}
+                            >
+                              <Heart className="w-3.5 h-3.5 fill-current" />
+                            </button>
+                            <button
+                              onClick={() => onWatchlist(movie)}
+                              title="Watchlist"
+                              className={`p-1.5 rounded-lg transition ${
+                                watchlistMovies.some((m) => String(m.id) === String(movie.id))
+                                  ? 'text-amber-400 bg-amber-500/10'
+                                  : 'text-neutral-400 hover:text-white'
+                              }`}
+                            >
+                              <Bookmark className="w-3.5 h-3.5 fill-current" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
 
             {/* AI Notes Drawer */}
             {aiVerdict && (
-              <div className="mt-8 p-5 rounded-2xl bg-neutral-900/80 border border-neutral-800 text-neutral-300 text-sm whitespace-pre-line leading-relaxed shadow-lg">
-                <div className="text-xs font-bold text-amber-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5" /> Sommelier Commentary
-                </div>
+              <div className="mt-3 p-3.5 rounded-2xl bg-neutral-900/80 border border-neutral-800 text-neutral-300 text-xs leading-relaxed shadow-lg max-h-24 overflow-y-auto">
+                <span className="font-bold text-amber-400 mr-2 uppercase tracking-wide">
+                  ✨ Sommelier Commentary:
+                </span>
                 {aiVerdict}
               </div>
             )}
@@ -283,143 +563,342 @@ Recommend the top 3 tailored movie picks that perfectly fulfill this mood. For e
   }
 
   return (
-    <div className="w-full max-w-2xl mx-auto py-6 px-4 animate-fade-in">
-      {/* Mode selection toggle */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-1 p-1 rounded-xl bg-neutral-900 border border-neutral-800 text-xs font-semibold">
-          <button
-            onClick={() => setTotalQuestions(10)}
-            className={`px-3 py-1.5 rounded-lg transition ${
-              totalQuestions === 10
-                ? 'bg-amber-500 text-neutral-950 font-bold shadow'
-                : 'text-neutral-400 hover:text-white'
-            }`}
-          >
-            10 Questions
-          </button>
-          <button
-            onClick={() => setTotalQuestions(20)}
-            className={`px-3 py-1.5 rounded-lg transition ${
-              totalQuestions === 20
-                ? 'bg-amber-500 text-neutral-950 font-bold shadow'
-                : 'text-neutral-400 hover:text-white'
-            }`}
-          >
-            20 Questions (Deep)
-          </button>
-        </div>
+    <div className="w-full max-w-7xl mx-auto h-[calc(100vh-7.5rem)] max-h-[calc(100vh-7.5rem)] overflow-hidden flex flex-col justify-between p-3 sm:p-4">
+      {/* Universal Top Header Bar */}
+      <div className="flex items-center justify-between pb-2.5 border-b border-neutral-800/80 shrink-0">
+        <div className="flex items-center gap-2 sm:gap-3">
+          {/* 6 Qs vs 12 Qs Mode Toggle */}
+          <div className="inline-flex p-0.5 rounded-xl bg-neutral-900 border border-neutral-800 text-xs font-semibold">
+            <button
+              onClick={() => {
+                setTotalQuestions(6);
+                if (currentStep >= 6) setCurrentStep(5);
+              }}
+              className={`px-3 py-1 rounded-lg transition ${
+                totalQuestions === 6
+                  ? 'bg-amber-500 text-neutral-950 font-bold shadow'
+                  : 'text-neutral-400 hover:text-white'
+              }`}
+            >
+              6 Questions (Quick)
+            </button>
+            <button
+              onClick={() => setTotalQuestions(12)}
+              className={`px-3 py-1 rounded-lg transition ${
+                totalQuestions === 12
+                  ? 'bg-amber-500 text-neutral-950 font-bold shadow'
+                  : 'text-neutral-400 hover:text-white'
+              }`}
+            >
+              12 Questions (Deep)
+            </button>
+          </div>
 
-        {answeredCount >= 3 && (
-          <button
-            onClick={() => finalizeRecommendations(answers)}
-            className="text-xs font-bold text-amber-400 hover:text-amber-300 flex items-center gap-1 px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 transition"
-          >
-            <Sparkles className="w-3.5 h-3.5" /> Reveal Picks Now ({answeredCount} answered)
-          </button>
-        )}
-      </div>
-
-      {/* Progress counter */}
-      <div className="mb-4">
-        <div className="flex items-center justify-between text-xs text-neutral-400 mb-1.5 font-medium">
-          <span>
-            Question {currentStep + 1} of {totalQuestions}
+          <span className="hidden sm:inline-flex text-xs font-medium text-neutral-400">
+            Step {currentStep + 1} of {totalQuestions}
           </span>
-          <span>{Math.round(((currentStep + 1) / totalQuestions) * 100)}% Complete</span>
         </div>
-        <div className="w-full h-1.5 bg-neutral-800 rounded-full overflow-hidden">
-          <div
-            className="h-full bg-amber-500 transition-all duration-300 ease-out"
-            style={{ width: `${((currentStep + 1) / totalQuestions) * 100}%` }}
-          />
+
+        {/* Mobile View Switcher Tabs */}
+        <div className="flex sm:hidden items-center gap-1 p-0.5 rounded-xl bg-neutral-900 border border-neutral-800 text-xs font-semibold">
+          <button
+            onClick={() => setMobileTab('question')}
+            className={`px-2.5 py-1 rounded-lg transition ${
+              mobileTab === 'question'
+                ? 'bg-neutral-800 text-white font-bold'
+                : 'text-neutral-400'
+            }`}
+          >
+            Question ({currentStep + 1}/{totalQuestions})
+          </button>
+          <button
+            onClick={() => setMobileTab('live_picks')}
+            className={`px-2.5 py-1 rounded-lg transition flex items-center gap-1 ${
+              mobileTab === 'live_picks'
+                ? 'bg-amber-500 text-neutral-950 font-bold'
+                : 'text-amber-400'
+            }`}
+          >
+            <Zap className="w-3 h-3 fill-current" /> Live Picks ({liveRecommendations.length})
+          </button>
+        </div>
+
+        {/* Right side AI Reveal action */}
+        <div className="flex items-center gap-2">
+          {answeredCount >= 2 && (
+            <button
+              onClick={() => finalizeRecommendations(answers)}
+              className="text-xs font-bold text-amber-400 hover:text-amber-300 flex items-center gap-1 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/30 hover:bg-amber-500/20 transition shadow-sm"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Finalize with AI</span>
+              <span className="sm:hidden">AI Pick</span>
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Current Question Card */}
-      <div className="bg-neutral-900/90 border border-neutral-800 rounded-2xl p-6 sm:p-8 shadow-xl">
-        <span className="text-[11px] font-bold uppercase tracking-wider text-amber-400">
-          Deductive Question #{currentStep + 1}
-        </span>
-        <h2 className="text-xl sm:text-2xl font-extrabold text-white mt-1 leading-snug">
-          {currentQ.question}
-        </h2>
-        <p className="text-xs sm:text-sm text-neutral-400 mt-1 mb-6">
-          {currentQ.subtitle}
-        </p>
+      {/* Progress Bar Indicator */}
+      <div className="w-full h-1 bg-neutral-800/80 shrink-0 my-2 rounded-full overflow-hidden">
+        <div
+          className="h-full bg-gradient-to-r from-amber-600 via-amber-500 to-yellow-400 transition-all duration-300 ease-out"
+          style={{ width: `${((currentStep + 1) / totalQuestions) * 100}%` }}
+        />
+      </div>
 
-        {/* Options List */}
-        <div className="space-y-2.5">
-          {currentQ.options.map((opt) => {
-            const isSelected = answers[currentStep] === opt;
-            return (
-              <button
-                key={opt}
-                onClick={() => handleSelectOption(opt)}
-                className={`w-full text-left p-4 rounded-xl border text-sm font-medium transition-all duration-200 flex items-center justify-between group ${
-                  isSelected
-                    ? 'bg-amber-500/15 border-amber-500 text-white shadow-md'
-                    : 'bg-neutral-950/60 border-neutral-800 text-neutral-300 hover:border-neutral-700 hover:bg-neutral-800/80 hover:text-white'
-                }`}
-              >
-                <span>{opt}</span>
-                <span
-                  className={`w-6 h-6 rounded-full flex items-center justify-center transition ${
+      {/* Main Split Layout: Left Question Cockpit (5 cols), Right Live Recommendations (7 cols) */}
+      <div className="flex-1 grid grid-cols-1 md:grid-cols-12 gap-4 min-h-0 overflow-hidden">
+        {/* LEFT COLUMN: Question Cockpit */}
+        <div
+          className={`md:col-span-5 h-full flex flex-col justify-between bg-neutral-900/90 border border-neutral-800/90 rounded-2xl p-4 sm:p-5 shadow-xl overflow-hidden ${
+            mobileTab === 'live_picks' ? 'hidden md:flex' : 'flex'
+          }`}
+        >
+          {/* Question Header */}
+          <div className="shrink-0">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1">
+                <Film className="w-3 h-3" /> Question #{currentStep + 1}
+              </span>
+              <span className="text-[11px] font-mono text-neutral-400">
+                {answeredCount} answered
+              </span>
+            </div>
+            <h2 className="text-base sm:text-lg font-extrabold text-white leading-snug">
+              {currentQ.question}
+            </h2>
+            <p className="text-xs text-neutral-400 mt-0.5">
+              {currentQ.subtitle}
+            </p>
+          </div>
+
+          {/* Compact Options Grid - Fits comfortably without vertical scrolling */}
+          <div className="flex-1 my-3 flex flex-col justify-center gap-1.5 sm:gap-2 min-h-0 overflow-y-auto pr-0.5">
+            {currentQ.options.map((opt) => {
+              const isSelected = answers[currentStep]?.tag === opt.tag;
+              return (
+                <button
+                  key={opt.tag}
+                  onClick={() => handleSelectOption(opt)}
+                  className={`w-full text-left py-2.5 px-3.5 rounded-xl border text-xs sm:text-sm font-medium transition-all duration-150 flex items-center justify-between group ${
                     isSelected
-                      ? 'bg-amber-500 text-black'
-                      : 'bg-neutral-800 text-neutral-500 group-hover:bg-neutral-700 group-hover:text-neutral-300'
+                      ? 'bg-amber-500/20 border-amber-500 text-white shadow-md'
+                      : 'bg-neutral-950/60 border-neutral-800/90 text-neutral-200 hover:border-neutral-700 hover:bg-neutral-800/80 hover:text-white'
                   }`}
                 >
-                  {isSelected ? <Check className="w-3.5 h-3.5 stroke-[3]" /> : <ArrowRight className="w-3.5 h-3.5" />}
-                </span>
-              </button>
-            );
-          })}
-        </div>
+                  <div className="flex items-center gap-2.5 truncate">
+                    <span className="text-base sm:text-lg shrink-0">{opt.icon}</span>
+                    <span className="truncate">{opt.label}</span>
+                  </div>
+                  <span
+                    className={`w-5 h-5 rounded-full flex items-center justify-center transition shrink-0 ml-2 ${
+                      isSelected
+                        ? 'bg-amber-500 text-black'
+                        : 'bg-neutral-800 text-neutral-500 group-hover:bg-neutral-700 group-hover:text-neutral-300'
+                    }`}
+                  >
+                    {isSelected ? <Check className="w-3 h-3 stroke-[3]" /> : <ArrowRight className="w-3 h-3" />}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
 
-        {/* Custom write-in form */}
-        <form onSubmit={handleCustomSubmit} className="mt-5 pt-4 border-t border-neutral-800/80">
-          <label className="block text-xs text-neutral-400 mb-1.5">
-            Or describe your own custom answer:
-          </label>
-          <div className="flex gap-2">
-            <div className="relative flex-1">
+          {/* Custom Input & Navigation Footer */}
+          <div className="shrink-0 pt-2 border-t border-neutral-800/80">
+            {/* Inline Custom Input */}
+            <form onSubmit={handleCustomSubmit} className="flex gap-2 mb-2.5">
               <input
                 type="text"
                 value={customInput}
                 onChange={(e) => setCustomInput(e.target.value)}
-                placeholder="e.g. Something with dry British humor and cold weather..."
-                className="w-full px-4 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-sm text-white placeholder-neutral-500 focus:outline-none focus:border-amber-500"
+                placeholder="Or custom: e.g. dry British comedy..."
+                className="flex-1 px-3 py-1.5 rounded-xl bg-neutral-950 border border-neutral-800 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-amber-500"
               />
+              <button
+                type="submit"
+                disabled={!customInput.trim()}
+                className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-40 disabled:pointer-events-none text-neutral-950 font-bold text-xs transition shrink-0"
+              >
+                Go
+              </button>
+            </form>
+
+            {/* Step navigation controls */}
+            <div className="flex items-center justify-between text-xs text-neutral-400">
+              <button
+                onClick={() => setCurrentStep((prev) => Math.max(0, prev - 1))}
+                disabled={currentStep === 0}
+                className="hover:text-white disabled:opacity-30 disabled:pointer-events-none flex items-center gap-1 font-medium"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" /> Prev
+              </button>
+
+              {/* On mobile, quick button to peek at live matches */}
+              <button
+                onClick={() => setMobileTab('live_picks')}
+                className="md:hidden text-amber-400 font-bold text-xs flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/20"
+              >
+                <Zap className="w-3 h-3 fill-current" /> See Matches ({liveRecommendations.length})
+              </button>
+
+              <button
+                onClick={() => setCurrentStep((prev) => Math.min(totalQuestions - 1, prev + 1))}
+                disabled={currentStep >= totalQuestions - 1}
+                className="hover:text-white disabled:opacity-30 disabled:pointer-events-none flex items-center gap-1 font-medium"
+              >
+                Skip <ChevronRight className="w-3.5 h-3.5" />
+              </button>
             </div>
+          </div>
+        </div>
+
+        {/* RIGHT COLUMN: Live Instant Recommendations */}
+        <div
+          className={`md:col-span-7 h-full flex flex-col bg-neutral-900/60 border border-neutral-800/90 rounded-2xl p-3 sm:p-4 shadow-xl overflow-hidden ${
+            mobileTab === 'question' ? 'hidden md:flex' : 'flex'
+          }`}
+        >
+          {/* Header of Live Recommendations */}
+          <div className="flex items-center justify-between pb-2.5 border-b border-neutral-800/80 shrink-0">
+            <div className="flex items-center gap-2">
+              <span className="relative flex h-2.5 w-2.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+              </span>
+              <h3 className="text-xs sm:text-sm font-bold text-white flex items-center gap-1.5">
+                <span>Instant Live Matches</span>
+                <span className="text-[10px] text-neutral-400 font-normal">
+                  (Updates with every answer)
+                </span>
+              </h3>
+            </div>
+
+            {/* Mobile return to question button */}
             <button
-              type="submit"
-              disabled={!customInput.trim()}
-              className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-40 disabled:pointer-events-none text-neutral-950 font-bold text-xs transition"
+              onClick={() => setMobileTab('question')}
+              className="md:hidden text-xs text-amber-400 font-bold px-2 py-1 bg-neutral-800 rounded-lg"
             >
-              Submit
+              ← Back to Q#{currentStep + 1}
             </button>
           </div>
-        </form>
 
-        {/* Navigation Step buttons */}
-        <div className="mt-6 flex items-center justify-between text-xs text-neutral-400 pt-3 border-t border-neutral-800/50">
-          <button
-            onClick={() => setCurrentStep((prev) => Math.max(0, prev - 1))}
-            disabled={currentStep === 0}
-            className="hover:text-white disabled:opacity-30 disabled:pointer-events-none"
-          >
-            ← Previous
-          </button>
-          <span className="font-mono text-neutral-500">
-            {answeredCount} of {totalQuestions} answered
-          </span>
-          <button
-            onClick={() => setCurrentStep((prev) => Math.min(totalQuestions - 1, prev + 1))}
-            disabled={currentStep >= totalQuestions - 1}
-            className="hover:text-white disabled:opacity-30 disabled:pointer-events-none"
-          >
-            Skip →
-          </button>
+          {/* Live Movie Cards Grid (2x2 on desktop, compact scroll on mobile) */}
+          <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3 min-h-0 overflow-y-auto pt-3 pr-1">
+            {liveRecommendations.map((movie) => {
+              const streamP = movie.streaming_providers?.find((p) => p.type === 'stream') || movie.streaming_providers?.[0];
+              const pStyle = streamP ? getProviderStyle(streamP.name) : null;
+
+              return (
+                <div
+                  key={movie.id}
+                  className="group relative bg-neutral-950/80 border border-neutral-800/90 hover:border-amber-500/50 rounded-xl p-2.5 flex flex-col justify-between shadow-lg transition-all duration-200"
+                >
+                  <div className="flex gap-2.5">
+                    {/* Poster Thumbnail */}
+                    <div className="relative w-20 aspect-[2/3] shrink-0 rounded-lg overflow-hidden bg-neutral-900">
+                      {movie.poster_path ? (
+                        <Image
+                          src={movie.poster_path}
+                          alt={movie.title}
+                          fill
+                          sizes="100px"
+                          className="object-cover group-hover:scale-105 transition-transform duration-300"
+                          unoptimized={movie.poster_path.startsWith('http')}
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-lg">🎬</div>
+                      )}
+                      <button
+                        onClick={() => onPlayTrailer(movie)}
+                        aria-label={`Play trailer for ${movie.title}`}
+                        className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <span className="p-2 bg-amber-500 text-black rounded-full shadow-md">
+                          <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
+                        </span>
+                      </button>
+                    </div>
+
+                    {/* Movie Info & Streaming Info */}
+                    <div className="flex-1 min-w-0 flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center gap-1.5 text-[10px] mb-0.5">
+                          <span className="text-amber-400 font-bold">
+                            ★ {movie.vote_average ? movie.vote_average.toFixed(1) : '8.0'}
+                          </span>
+                          <span className="text-neutral-500">•</span>
+                          <span className="text-neutral-400">{movie.release_date?.slice(0, 4)}</span>
+                        </div>
+
+                        <h4 className="text-xs sm:text-sm font-bold text-white truncate group-hover:text-amber-400 transition-colors">
+                          {movie.title}
+                        </h4>
+
+                        {/* High-visibility Streaming Badge */}
+                        {pStyle && streamP && streamP.name !== 'Available Online' ? (
+                          <div className={`mt-1.5 inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-bold shadow-sm ${pStyle.bg}`}>
+                            {pStyle.logo ? (
+                              <img src={pStyle.logo} alt="" className="w-3 h-3 rounded object-contain shrink-0" />
+                            ) : (
+                              <Tv className="w-2.5 h-2.5" />
+                            )}
+                            <span className="truncate max-w-[95px]">{pStyle.text}</span>
+                          </div>
+                        ) : (
+                          <div className="mt-1.5 inline-flex items-center gap-1 text-[10px] text-neutral-400 bg-neutral-900 py-0.5 px-1.5 rounded border border-neutral-800">
+                            <Tv className="w-2.5 h-2.5 text-amber-400 shrink-0" />
+                            <span className="truncate">Stream online</span>
+                          </div>
+                        )}
+
+                        {movie.ai_match_reason && (
+                          <div className="mt-1 text-[10px] text-amber-300 font-medium truncate">
+                            ⚡ {movie.ai_match_reason}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Quick Card Action Buttons */}
+                      <div className="mt-2 pt-1.5 border-t border-neutral-800/80 flex items-center justify-between">
+                        <button
+                          onClick={() => onPlayTrailer(movie)}
+                          className="text-[11px] font-semibold text-amber-400 hover:text-amber-300 flex items-center gap-1 transition"
+                        >
+                          <Play className="w-3 h-3 fill-current" /> Trailer
+                        </button>
+
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => onLove(movie)}
+                            title="Love this movie"
+                            className={`p-1 rounded-md transition ${
+                              lovedMovies.some((m) => String(m.id) === String(movie.id))
+                                ? 'text-red-500 bg-red-500/10'
+                                : 'text-neutral-400 hover:text-white'
+                            }`}
+                          >
+                            <Heart className="w-3 h-3 fill-current" />
+                          </button>
+                          <button
+                            onClick={() => onWatchlist(movie)}
+                            title="Add to Watchlist"
+                            className={`p-1 rounded-md transition ${
+                              watchlistMovies.some((m) => String(m.id) === String(movie.id))
+                                ? 'text-amber-400 bg-amber-500/10'
+                                : 'text-neutral-400 hover:text-white'
+                            }`}
+                          >
+                            <Bookmark className="w-3 h-3 fill-current" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
     </div>

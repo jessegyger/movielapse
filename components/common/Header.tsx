@@ -75,7 +75,7 @@ export const Header: React.FC<HeaderProps> = ({
                 : 'text-neutral-400 hover:text-white'
             }`}
           >
-            20 Questions
+            Matchmaker (6 Qs)
           </button>
         </nav>
 

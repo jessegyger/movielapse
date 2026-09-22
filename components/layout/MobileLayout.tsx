@@ -25,7 +25,7 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
       <div className="px-4 py-3 border-b border-neutral-900 bg-neutral-950/95 sticky top-16 z-30 flex items-center justify-between">
         <span className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
           <Film className="w-3.5 h-3.5" />
-          {appMode === 'twenty_questions' && '20 Questions Sommelier'}
+          {appMode === 'twenty_questions' && 'Matchmaker (6 Qs)'}
           {appMode === 'chat' && 'Cinephile AI Chat'}
           {appMode === 'shelf' && 'Cine-Vault'}
         </span>
@@ -76,7 +76,7 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
           }`}
         >
           <HelpCircle className="w-5 h-5" />
-          <span className="text-[10px]">20 Questions</span>
+          <span className="text-[10px]">Matchmaker</span>
         </button>
 
         <button

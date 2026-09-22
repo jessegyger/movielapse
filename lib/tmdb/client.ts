@@ -424,10 +424,31 @@ export class TMDbClient {
     return 'US';
   }
 
+  private providersCache = new Map<number, StreamingProvider[]>();
+
+  // Resolve official provider logo when TMDb returns null logo or for fallback
+  getProviderLogo(providerName: string): string | undefined {
+    const norm = providerName.toLowerCase();
+    if (norm.includes('netflix')) return 'https://image.tmdb.org/t/p/original/9A1JSVmSxsyaBK4SUFsYVqbAYfW.jpg';
+    if (norm.includes('prime') || norm.includes('amazon')) return 'https://image.tmdb.org/t/p/original/pbpMk2JmcoNnQwx5JGpXngfoWtp.jpg';
+    if (norm.includes('disney')) return 'https://image.tmdb.org/t/p/original/7rwgEs15tFwyR9NPQ5vpzxTj19Q.jpg';
+    if (norm.includes('max') || norm.includes('hbo')) return 'https://image.tmdb.org/t/p/original/aS2zvJWn9mwiCOeaaCkIh4w00dD.jpg';
+    if (norm.includes('hulu')) return 'https://image.tmdb.org/t/p/original/giwM8L5DaFMTEG1Qg2G2tzxsYvg.jpg';
+    if (norm.includes('apple')) return 'https://image.tmdb.org/t/p/original/6uhKBfmtzFqOcLousHwZuzcrScK.jpg';
+    if (norm.includes('paramount')) return 'https://image.tmdb.org/t/p/original/fi83B1oztoS47xxcemFdPMhIzK.jpg';
+    if (norm.includes('peacock')) return 'https://image.tmdb.org/t/p/original/8VCV78ehT9YImCcDTRAR292278b.jpg';
+    if (norm.includes('youtube')) return 'https://image.tmdb.org/t/p/original/peURlLlr8jggOwK53fJ5wdQl05y.jpg';
+    return undefined;
+  }
+
   // Fetch verified streaming providers (Netflix, Prime, Disney+, Max, Hulu, etc.) by region
   async getWatchProviders(movieId: number | string, region?: string): Promise<StreamingProvider[]> {
     const numId = Number(movieId);
     if (isNaN(numId) || numId <= 0) return [];
+
+    if (this.providersCache.has(numId)) {
+      return this.providersCache.get(numId)!;
+    }
 
     const targetRegion = region || this.getUserCountry();
     try {
@@ -444,7 +465,7 @@ export class TMDbClient {
           for (const p of regData.flatrate) {
             providers.push({
               name: p.provider_name,
-              logo_path: p.logo_path ? `${TMDB_IMG_BASE}${p.logo_path}` : undefined,
+              logo_path: p.logo_path ? `${TMDB_IMG_BASE}${p.logo_path}` : this.getProviderLogo(p.provider_name),
               type: 'stream'
             });
           }
@@ -456,7 +477,7 @@ export class TMDbClient {
             if (!providers.some(existing => existing.name === p.provider_name)) {
               providers.push({
                 name: `${p.provider_name} (Free w/ ads)`,
-                logo_path: p.logo_path ? `${TMDB_IMG_BASE}${p.logo_path}` : undefined,
+                logo_path: p.logo_path ? `${TMDB_IMG_BASE}${p.logo_path}` : this.getProviderLogo(p.provider_name),
                 type: 'stream'
               });
             }
@@ -468,18 +489,60 @@ export class TMDbClient {
           for (const p of regData.rent.slice(0, 3)) {
             providers.push({
               name: `${p.provider_name} (Rent/Buy)`,
-              logo_path: p.logo_path ? `${TMDB_IMG_BASE}${p.logo_path}` : undefined,
+              logo_path: p.logo_path ? `${TMDB_IMG_BASE}${p.logo_path}` : this.getProviderLogo(p.provider_name),
               type: 'rent'
             });
           }
         }
 
+        this.providersCache.set(numId, providers);
         return providers;
       }
     } catch (e) {
       console.warn('Failed to fetch watch providers', e);
     }
     return [];
+  }
+
+  // Batch enrich movies with live verified watch providers
+  async enrichMoviesWithProviders(movies: Movie[], maxCount: number = 8): Promise<Movie[]> {
+    if (!movies || movies.length === 0) return movies;
+
+    const toProcess = movies.slice(0, maxCount);
+    const enrichedSlice = await Promise.all(
+      toProcess.map(async (movie) => {
+        // If movie already has concrete providers with logos, ensure logos are filled
+        if (movie.streaming_providers && movie.streaming_providers.length > 0 && movie.streaming_providers[0].name !== 'Available Online') {
+          const filled = movie.streaming_providers.map(sp => ({
+            ...sp,
+            logo_path: sp.logo_path || this.getProviderLogo(sp.name)
+          }));
+          return { ...movie, streaming_providers: filled };
+        }
+
+        const numId = Number(movie.id);
+        if (!isNaN(numId) && numId > 0) {
+          const providers = await this.getWatchProviders(numId);
+          if (providers && providers.length > 0) {
+            return { ...movie, streaming_providers: providers };
+          }
+        }
+
+        // Check seed catalog for fallback providers
+        const seedMatch = SEED_MOVIES.find(s => String(s.id) === String(movie.id) || s.title.toLowerCase() === movie.title.toLowerCase());
+        if (seedMatch?.streaming_providers) {
+          const filled = seedMatch.streaming_providers.map(sp => ({
+            ...sp,
+            logo_path: sp.logo_path || this.getProviderLogo(sp.name)
+          }));
+          return { ...movie, streaming_providers: filled };
+        }
+
+        return movie;
+      })
+    );
+
+    return [...enrichedSlice, ...movies.slice(maxCount)];
   }
 
   // Get full movie details + trailer video key + verified regional streaming
