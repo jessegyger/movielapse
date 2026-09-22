@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useTasteStore } from '@/lib/store/tasteStore';
 import { tmdb } from '@/lib/tmdb/client';
 import { webllmEngine } from '@/lib/webllm/engine';
-import { Movie, WebLLMProgress, DeviceMode } from '@/lib/tmdb/types';
+import { Movie, WebLLMProgress, AppMode } from '@/lib/tmdb/types';
+import { backIfLayer, ensureRootHistory, isNavState, pushNavLayer } from '@/lib/navHistory';
 
 // Components
 import { Header } from '@/components/common/Header';
@@ -34,7 +35,6 @@ export default function Home() {
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
   const [isFinderOpen, setIsFinderOpen] = useState(false);
 
-  // WebLLM Loading Progress State (starts in instant engine mode — local AI download is opt-in)
   const [webllmProgress, setWebllmProgress] = useState<WebLLMProgress>({
     progress: 1,
     text: 'Instant Engine Active',
@@ -43,61 +43,71 @@ export default function Home() {
     usingFallback: true,
   });
 
-  // Responsive device detector
   const [detectedLayout, setDetectedLayout] = useState<'mobile' | 'tablet' | 'desktop'>('desktop');
 
-  useEffect(() => {
-    // Load seeds and enrich with live regional providers
-    const seeds = tmdb.getSeedMovies();
-    setSeedMovies(seeds);
-    tmdb.enrichMoviesWithProviders(seeds, seeds.length).then((enriched) => {
-      setSeedMovies(enriched);
-    });
+  const navRef = useRef({
+    trailer: false,
+    detail: false,
+    finder: false,
+    settings: false,
+    search: false,
+    mode: 'shelf' as AppMode,
+  });
+  navRef.current = {
+    trailer: isTrailerOpen,
+    detail: isDetailOpen,
+    finder: isFinderOpen,
+    settings: isSettingsOpen,
+    search: isMobileSearchOpen,
+    mode: store.appMode,
+  };
 
-    // Restore Gemini Key if saved
-    const savedGemini = localStorage.getItem('movielapse_gemini_api_key') || '';
-    if (savedGemini) {
-      setGeminiApiKey(savedGemini);
-      webllmEngine.setGeminiApiKey(savedGemini);
-    }
-
-    // Responsive screen detection
-    const handleResize = () => {
-      const w = window.innerWidth;
-      if (w < 768) setDetectedLayout('mobile');
-      else if (w < 1024) setDetectedLayout('tablet');
-      else setDetectedLayout('desktop');
-    };
-
-    handleResize();
-    window.addEventListener('resize', handleResize);
-
-    // Listen to WebLLM Progress
-    webllmEngine.setProgressCallback((p) => {
-      setWebllmProgress(p);
-    });
-
-    // Start with Instant Cinephile Engine — WebLLM download is opt-in via Settings
-    webllmEngine.enableFallback('Instant Engine Active (Zero Wait)');
-
-    // User lands directly on the Movie Vault (Cine-Shelf)
-
-    return () => {
-      window.removeEventListener('resize', handleResize);
-    };
+  const closeTrailer = useCallback(() => {
+    setIsTrailerOpen(false);
+    setSelectedTrailerMovie(null);
   }, []);
 
-  const handleSaveGemini = (key: string) => {
-    setGeminiApiKey(key);
-    localStorage.setItem('movielapse_gemini_api_key', key);
-    webllmEngine.setGeminiApiKey(key);
-  };
+  const closeDetail = useCallback(() => {
+    setIsDetailOpen(false);
+    setSelectedDetailMovie(null);
+  }, []);
+
+  const closeFinder = useCallback(() => setIsFinderOpen(false), []);
+  const closeSettings = useCallback(() => setIsSettingsOpen(false), []);
+  const closeSearch = useCallback(() => {
+    setIsMobileSearchOpen(false);
+    setSearchQuery('');
+  }, []);
+
+  const handleSelectAppMode = useCallback(
+    (mode: AppMode) => {
+      if (mode === store.appMode) return;
+
+      if (mode === 'shelf') {
+        // Pop the mode history entry so Back doesn't immediately leave the site
+        if (typeof window !== 'undefined' && isNavState(window.history.state) && window.history.state.layer === 'mode') {
+          window.history.back();
+          return; // popstate sets shelf
+        }
+        store.setAppMode('shelf');
+        return;
+      }
+
+      if (typeof window !== 'undefined' && isNavState(window.history.state) && window.history.state.layer === 'mode') {
+        window.history.replaceState({ ml: true, layer: 'mode', mode }, '');
+      } else {
+        pushNavLayer('mode', { mode });
+      }
+      store.setAppMode(mode);
+    },
+    [store]
+  );
 
   const handlePlayTrailer = async (movie: Movie) => {
     setSelectedTrailerMovie(movie);
     setIsTrailerOpen(true);
+    pushNavLayer('trailer');
 
-    // If movie doesn't have a trailer key or needs full video key resolution, fetch live
     if (!movie.trailer_key && movie.id) {
       try {
         const full = await tmdb.getMovieDetails(movie.id);
@@ -113,8 +123,8 @@ export default function Home() {
   const handleSelectMovie = async (movie: Movie) => {
     setSelectedDetailMovie(movie);
     setIsDetailOpen(true);
+    pushNavLayer('detail');
 
-    // Fetch full rich movie details (director, full cast, keywords, box office, backdrop)
     if (movie.id) {
       try {
         const full = await tmdb.getMovieDetails(movie.id);
@@ -127,10 +137,97 @@ export default function Home() {
     }
   };
 
+  const openFinder = () => {
+    setIsFinderOpen(true);
+    pushNavLayer('finder');
+  };
+
+  const openSettings = () => {
+    setIsSettingsOpen(true);
+    pushNavLayer('settings');
+  };
+
+  const openSearch = () => {
+    if (!isMobileSearchOpen) {
+      setIsMobileSearchOpen(true);
+      pushNavLayer('search');
+    }
+  };
+
+  useEffect(() => {
+    ensureRootHistory();
+
+    const onPopState = () => {
+      const n = navRef.current;
+      if (n.trailer) {
+        closeTrailer();
+        return;
+      }
+      if (n.detail) {
+        closeDetail();
+        return;
+      }
+      if (n.finder) {
+        closeFinder();
+        return;
+      }
+      if (n.settings) {
+        closeSettings();
+        return;
+      }
+      if (n.search) {
+        closeSearch();
+        return;
+      }
+      if (n.mode !== 'shelf') {
+        store.setAppMode('shelf');
+        return;
+      }
+    };
+
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [closeTrailer, closeDetail, closeFinder, closeSettings, closeSearch, store]);
+
+  useEffect(() => {
+    const seeds = tmdb.getSeedMovies();
+    setSeedMovies(seeds);
+    tmdb.enrichMoviesWithProviders(seeds, seeds.length).then((enriched) => {
+      setSeedMovies(enriched);
+    });
+
+    const savedGemini = localStorage.getItem('movielapse_gemini_api_key') || '';
+    if (savedGemini) {
+      setGeminiApiKey(savedGemini);
+      webllmEngine.setGeminiApiKey(savedGemini);
+    }
+
+    const handleResize = () => {
+      const w = window.innerWidth;
+      if (w < 768) setDetectedLayout('mobile');
+      else if (w < 1024) setDetectedLayout('tablet');
+      else setDetectedLayout('desktop');
+    };
+
+    handleResize();
+    window.addEventListener('resize', handleResize);
+
+    webllmEngine.setProgressCallback((p) => {
+      setWebllmProgress(p);
+    });
+
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const handleSaveGemini = (key: string) => {
+    setGeminiApiKey(key);
+    localStorage.setItem('movielapse_gemini_api_key', key);
+    webllmEngine.setGeminiApiKey(key);
+  };
+
   const activeEffectiveLayout: 'mobile' | 'tablet' | 'desktop' =
     store.deviceMode === 'auto' ? detectedLayout : store.deviceMode;
 
-  // Render the current active mode content
   const renderModeContent = () => {
     switch (store.appMode) {
       case 'twenty_questions':
@@ -184,9 +281,11 @@ export default function Home() {
             onSearchChange={setSearchQuery}
             onClearSearch={() => setSearchQuery('')}
             isSearchOpen={isMobileSearchOpen}
-            onOpenSearch={() => setIsMobileSearchOpen(true)}
-            onCloseSearch={() => setIsMobileSearchOpen(false)}
-            onOpenFinder={() => setIsFinderOpen(true)}
+            onOpenSearch={openSearch}
+            onCloseSearch={() => {
+              if (!backIfLayer('search')) closeSearch();
+            }}
+            onOpenFinder={openFinder}
           />
         );
     }
@@ -194,26 +293,24 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 font-sans selection:bg-amber-500 selection:text-neutral-950">
-      {/* Top Universal App Header */}
       <Header
         appMode={store.appMode}
-        onSelectAppMode={store.setAppMode}
+        onSelectAppMode={handleSelectAppMode}
         deviceMode={store.deviceMode}
         onSelectDeviceMode={store.setDeviceMode}
         webllmProgress={webllmProgress}
-        onOpenSettings={() => setIsSettingsOpen(true)}
+        onOpenSettings={openSettings}
       />
 
-      {/* Render Device-Specific Layout */}
       {activeEffectiveLayout === 'mobile' && (
         <MobileLayout
           appMode={store.appMode}
-          onSelectAppMode={store.setAppMode}
+          onSelectAppMode={handleSelectAppMode}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
           onClearSearch={() => setSearchQuery('')}
-          onOpenSearch={() => setIsMobileSearchOpen(true)}
-          onOpenFinder={() => setIsFinderOpen(true)}
+          onOpenSearch={openSearch}
+          onOpenFinder={openFinder}
         >
           {renderModeContent()}
         </MobileLayout>
@@ -222,7 +319,7 @@ export default function Home() {
       {activeEffectiveLayout === 'tablet' && (
         <TabletLayout
           appMode={store.appMode}
-          onSelectAppMode={store.setAppMode}
+          onSelectAppMode={handleSelectAppMode}
           seedMovies={seedMovies}
           lovedMovies={store.loved}
           dislikedMovies={store.disliked}
@@ -245,18 +342,20 @@ export default function Home() {
         </DesktopLayout>
       )}
 
-      {/* Trailer Player Overlay Modal */}
       <TrailerModal
         movie={selectedTrailerMovie}
         isOpen={isTrailerOpen}
-        onClose={() => setIsTrailerOpen(false)}
+        onClose={() => {
+          if (!backIfLayer('trailer')) closeTrailer();
+        }}
       />
 
-      {/* Full Movie Details Modal */}
       <MovieDetailModal
         movie={selectedDetailMovie}
         isOpen={isDetailOpen}
-        onClose={() => setIsDetailOpen(false)}
+        onClose={() => {
+          if (!backIfLayer('detail')) closeDetail();
+        }}
         onPlayTrailer={handlePlayTrailer}
         onLove={store.markLoved}
         onDislike={store.markDisliked}
@@ -268,17 +367,19 @@ export default function Home() {
         isWatched={selectedDetailMovie ? store.watched.some((m) => String(m.id) === String(selectedDetailMovie.id)) : false}
       />
 
-      {/* 20Q Movie Finder Wizard */}
       <MovieFinderWizard
         isOpen={isFinderOpen}
-        onClose={() => setIsFinderOpen(false)}
+        onClose={() => {
+          if (!backIfLayer('finder')) closeFinder();
+        }}
         onSelectMovie={handleSelectMovie}
       />
 
-      {/* Settings Modal */}
       <SettingsModal
         isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
+        onClose={() => {
+          if (!backIfLayer('settings')) closeSettings();
+        }}
         tmdbApiKey={store.tmdbApiKey}
         onSaveTmdbKey={store.setTmdbApiKey}
         geminiApiKey={geminiApiKey}
@@ -287,7 +388,7 @@ export default function Home() {
         currentModel={webllmEngine.getCurrentModel()}
         onSelectModel={(modelId) => {
           webllmEngine.initEngine(modelId);
-          setIsSettingsOpen(false);
+          if (!backIfLayer('settings')) closeSettings();
         }}
       />
     </div>

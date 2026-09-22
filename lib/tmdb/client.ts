@@ -100,6 +100,8 @@ export class TMDbClient {
     certificationLte?: string;
     certificationGte?: string;
     includeAdult?: boolean;
+    voteCountGte?: number;
+    voteCountLte?: number;
     watchProviderId?: number;
     watchRegion?: string;
     releaseFormat?: 'all' | 'dvd' | 'theatrical';
@@ -120,11 +122,20 @@ export class TMDbClient {
 
     if (options.sortBy) {
       url += `&sort_by=${options.sortBy}`;
-      if (options.sortBy.includes('vote_average') || options.sortBy.includes('vote_count')) {
-        url += `&vote_count.gte=100`;
-      }
     } else {
       url += `&sort_by=popularity.desc`;
+    }
+
+    if (options.voteCountGte != null) {
+      url += `&vote_count.gte=${options.voteCountGte}`;
+    } else if (
+      options.sortBy &&
+      (options.sortBy.includes('vote_average') || options.sortBy.includes('vote_count'))
+    ) {
+      url += `&vote_count.gte=100`;
+    }
+    if (options.voteCountLte != null) {
+      url += `&vote_count.lte=${options.voteCountLte}`;
     }
 
     if (options.genreId) {

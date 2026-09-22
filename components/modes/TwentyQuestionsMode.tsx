@@ -64,6 +64,17 @@ const QUESTION_BANK: QuestionDef[] = [
   },
   {
     id: 3,
+    category: 'Buzz',
+    question: 'How well-known?',
+    options: [
+      { label: 'Popular hits', tag: 'pop_hits', icon: '🔥' },
+      { label: 'Familiar', tag: 'pop_known', icon: '📺' },
+      { label: 'Hidden gems', tag: 'pop_gems', icon: '💎' },
+      { label: "Don't care", tag: 'pop_any', icon: '🎲' },
+    ],
+  },
+  {
+    id: 4,
     category: 'Pace',
     question: 'Pace?',
     options: [
@@ -75,7 +86,7 @@ const QUESTION_BANK: QuestionDef[] = [
     ],
   },
   {
-    id: 4,
+    id: 5,
     category: 'Era',
     question: 'Which era?',
     options: [
@@ -89,7 +100,7 @@ const QUESTION_BANK: QuestionDef[] = [
     ],
   },
   {
-    id: 5,
+    id: 6,
     category: 'Setting',
     question: 'Where is it set?',
     options: [
@@ -105,7 +116,7 @@ const QUESTION_BANK: QuestionDef[] = [
     ],
   },
   {
-    id: 6,
+    id: 7,
     category: 'Story',
     question: 'How should the story feel?',
     options: [
@@ -117,7 +128,7 @@ const QUESTION_BANK: QuestionDef[] = [
     ],
   },
   {
-    id: 7,
+    id: 8,
     category: 'Goal',
     question: 'Tonight I want to…',
     options: [
@@ -130,7 +141,7 @@ const QUESTION_BANK: QuestionDef[] = [
     ],
   },
   {
-    id: 8,
+    id: 9,
     category: 'Rating',
     question: 'Rating OK with?',
     options: [
@@ -143,7 +154,7 @@ const QUESTION_BANK: QuestionDef[] = [
     ],
   },
   {
-    id: 9,
+    id: 10,
     category: 'Content',
     question: 'Content vibes?',
     options: [
@@ -157,7 +168,7 @@ const QUESTION_BANK: QuestionDef[] = [
     ],
   },
   {
-    id: 10,
+    id: 11,
     category: 'Mood',
     question: 'Overall mood?',
     options: [
@@ -171,7 +182,7 @@ const QUESTION_BANK: QuestionDef[] = [
     ],
   },
   {
-    id: 11,
+    id: 12,
     category: 'Lead',
     question: 'Who is the lead?',
     options: [
@@ -352,6 +363,11 @@ function scoreMovie(movie: Movie, tags: string[]): number {
   if (tags.includes('goal_laugh') && genres.includes('Comedy')) score += 10;
   if (tags.includes('goal_scare') && genres.includes('Horror')) score += 12;
 
+  const votes = movie.vote_count || 0;
+  if (tags.includes('pop_hits') && votes >= 2500) score += 10;
+  if (tags.includes('pop_known') && votes >= 800) score += 6;
+  if (tags.includes('pop_gems') && votes > 0 && votes <= 2000 && (movie.vote_average || 0) >= 7) score += 10;
+
   if (tags.includes('want_animated') && isAnimated(movie)) score += 14;
   if (tags.includes('want_kids') && isKidsFriendly(movie)) score += 12;
   if (tags.includes('want_adult') && !isAnimated(movie) && !genres.includes('Family')) score += 4;
@@ -447,6 +463,9 @@ type PoolQuery = {
   certificationLte?: string;
   certificationGte?: string;
   includeAdult?: boolean;
+  voteCountGte?: number;
+  voteCountLte?: number;
+  sortBy?: string;
 };
 
 function poolQueryFromTags(tags: string[]): PoolQuery {
@@ -521,6 +540,19 @@ function poolQueryFromTags(tags: string[]): PoolQuery {
     q.withoutKeywords = KW_NUDITY;
   }
 
+  // Popularity / buzz
+  if (tags.includes('pop_hits')) {
+    q.voteCountGte = 2500;
+    q.sortBy = 'popularity.desc';
+  } else if (tags.includes('pop_known')) {
+    q.voteCountGte = 800;
+    q.sortBy = 'popularity.desc';
+  } else if (tags.includes('pop_gems')) {
+    q.voteCountGte = 80;
+    q.voteCountLte = 2000;
+    q.sortBy = 'vote_average.desc';
+  }
+
   if (tags.includes('mood_funny') && !q.genreId) q.genreId = GENRE_TMDB.comedy;
   if (tags.includes('mood_scary') && !q.genreId) q.genreId = GENRE_TMDB.horror;
   if (tags.includes('mood_romantic') && !q.genreId) q.genreId = GENRE_TMDB.romance;
@@ -557,7 +589,9 @@ async function fetchDiscoverPages(
         certificationLte: query.certificationLte,
         certificationGte: query.certificationGte,
         includeAdult: query.includeAdult,
-        sortBy: 'popularity.desc',
+        voteCountGte: query.voteCountGte,
+        voteCountLte: query.voteCountLte,
+        sortBy: query.sortBy || 'popularity.desc',
       })
     )
   );
