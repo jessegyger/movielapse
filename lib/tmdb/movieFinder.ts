@@ -468,7 +468,52 @@ export const QUESTION_BANK: WizardQuestion[] = [
     match: (m) => (m.vote_average >= 7.8 ? 1.0 : 0.2),
     onYes: { vote_average_gte: 7.7, vote_count_gte: 200 },
   },
+  {
+    id: 'female_lead',
+    question: 'Is the main protagonist / lead role a woman (or girl)?',
+    hint: 'The primary lead character is female',
+    match: (m) => femaleLeadWeight(m),
+  },
 ];
+
+/** Rough lead-gender heuristic from cast / overview (good enough for early splits). */
+const FEMALE_FIRST_NAMES = new Set([
+  'amy', 'ana', 'anne', 'annie', 'audrey', 'ava', 'bella', 'blair', 'brie',
+  'cate', 'catherine', 'charlize', 'chloe', 'dakota', 'drew', 'elaine', 'elizabeth',
+  'ella', 'ellen', 'emily', 'emma', 'florence', 'gal', 'gillian', 'greta', 'gwen',
+  'hailee', 'harley', 'helena', 'holly', 'ida', 'irene', 'jane', 'jennifer', 'jenny',
+  'jessica', 'joanna', 'jodie', 'julia', 'julianne', 'kate', 'katherine', 'katie',
+  'keira', 'kerry', 'kim', 'kirsten', 'kristen', 'laura', 'lauren', 'lena', 'lily',
+  'linda', 'lindsay', 'lisa', 'lucy', 'lupita', 'maggie', 'margot', 'maria', 'marie',
+  'marion', 'mary', 'maya', 'meryl', 'mia', 'michelle', 'milla', 'molly', 'monica',
+  'naomie', 'natalie', 'nicole', 'olivia', 'penelope', 'rachel', 'rebecca', 'renee',
+  'rooney', 'rose', 'saoirse', 'sandra', 'sarah', 'scarlett', 'selena', 'sharon',
+  'sigourney', 'sofia', 'sophia', 'susan', 'tilda', 'uma', 'victoria', 'viola',
+  'whitney', 'winona', 'willow', 'zendaya', 'zoe', 'zoë',
+]);
+
+function firstName(full: string): string {
+  const cleaned = full.trim().split(/\s+/)[0]?.replace(/[^a-zA-Zà-üÀ-Ü'-]/g, '') || '';
+  return cleaned.toLowerCase();
+}
+
+function femaleLeadWeight(m: Movie): number {
+  const cast = m.cast || [];
+  if (cast.length > 0) {
+    const lead = firstName(cast[0]);
+    if (FEMALE_FIRST_NAMES.has(lead)) return 1.0;
+    if (/^(zendaya|rihanna|beyoncé|cher|madonna)$/i.test(cast[0].trim())) return 1.0;
+    return 0.05;
+  }
+  const text = `${m.title} ${m.overview || ''}`.toLowerCase();
+  if (
+    /\b(she|her|woman|girl|mother|daughter|princess|queen)\b/.test(text) &&
+    !/\b(he |him |his |man |boy |father|son|king|prince)\b/.test(text.slice(0, 120))
+  ) {
+    return 0.6;
+  }
+  return 0.2;
+}
 
 // ── Live TMDb Discover Fetcher (Queries all 1,000,000+ Movies) ────────────────
 
@@ -1043,36 +1088,6 @@ export function generateClusterQuestion(
   return forks[0].question;
 }
 
-/** Early fact openers for Akinator guessing (about the movie — not your mood) */
-const OPENER_QUESTIONS: WizardQuestion[] = [
-  {
-    id: 'opener_intense',
-    question: 'Is the movie intense — high stakes, tension, or heavy conflict?',
-    hint: 'Thriller / action / horror energy vs light comfort',
-    focusHint: 'Checking tone of the title in your head',
-    match: (m) => {
-      const g = m.genres || [];
-      if (g.some((x) => ['Thriller', 'Horror', 'Action', 'Crime', 'War'].includes(x))) return 1.0;
-      if (g.some((x) => ['Comedy', 'Family', 'Romance', 'Animation'].includes(x))) return 0.15;
-      return 0.4;
-    },
-  },
-  {
-    id: 'opener_familiar',
-    question: 'Is it a widely known movie most people would recognize?',
-    hint: 'Famous crowd title vs deeper cut',
-    focusHint: 'Checking how famous the title is',
-    match: (m) => {
-      const votes = m.vote_count || 0;
-      if (votes >= 8000) return 1.0;
-      if (votes >= 2500) return 0.7;
-      if (votes >= 800) return 0.35;
-      return 0.1;
-    },
-    onYes: { vote_count_gte: 1500 },
-  },
-];
-
 export function selectNextQuestion(
   scoredPool: ScoredMovie[],
   askedIds: Set<string>,
@@ -1080,7 +1095,6 @@ export function selectNextQuestion(
 ): WizardQuestion | null {
   const available = QUESTION_BANK.filter((q) => {
     if (askedIds.has(q.id)) return false;
-    // If the user already answered or selected an era, never ask another era question
     if (hasAnsweredEra && q.isEra) return false;
     return true;
   });
@@ -1095,11 +1109,7 @@ export function selectNextQuestion(
 
   for (const q of available) {
     const matchingCount = topContenders.filter((m) => q.match(m) >= 0.3).length;
-    // CRITICAL FIX: Only ask questions where a meaningful percentage of remaining movies match.
-    // If nobody matches (e.g. 0 movies have gangsters), NEVER ask about it!
-    if (matchingCount < 1 || matchingCount >= topContenders.length) {
-      continue;
-    }
+    if (matchingCount < 1 || matchingCount >= topContenders.length) continue;
 
     const avg = matchingCount / topContenders.length;
     const score = 1.0 - Math.abs(avg - 0.5) * 2;
@@ -1112,10 +1122,51 @@ export function selectNextQuestion(
   return best;
 }
 
+/** Classic 20Q priority — ask ONLY if it still splits the remaining pool. */
+const ERA_QUESTION_IDS = ['era_modern', 'era_pre2010', 'era_90s', 'era_80s', 'era_classic'];
+const ANIMATION_QUESTION_IDS = ['animated', 'cluster_genre_animation', 'theme_animated'];
+const CORE_GENRE_IDS = [
+  'comedy', 'horror', 'action', 'scifi', 'thriller', 'romance', 'crime', 'fantasy_magic',
+  'war', 'detective', 'musical', 'cluster_genre_comedy', 'cluster_genre_horror',
+  'cluster_genre_action', 'cluster_genre_science_fiction', 'cluster_genre_thriller',
+  'cluster_genre_romance', 'cluster_genre_crime', 'cluster_genre_fantasy',
+  'cluster_genre_war', 'cluster_genre_mystery', 'cluster_genre_music',
+];
+
+function pickBestSplit(
+  pool: Movie[],
+  candidates: WizardQuestion[],
+  askedIds: Set<string>,
+  minBalance = 0.15
+): WizardQuestion | null {
+  let best: WizardQuestion | null = null;
+  let bestBal = -1;
+  for (const q of candidates) {
+    if (askedIds.has(q.id)) continue;
+    const hits = pool.filter((m) => q.match(m) >= 0.45).length;
+    const bal = balanceScore(hits, pool.length);
+    if (bal < minBalance) continue;
+    if (bal > bestBal) {
+      bestBal = bal;
+      best = q;
+    }
+  }
+  return best;
+}
+
+function bankByIds(ids: string[]): WizardQuestion[] {
+  return QUESTION_BANK.filter((q) => ids.includes(q.id));
+}
+
 /**
- * Free Akinator picker — no WebLLM / cloud model required.
- * Order: early fact openers → cluster forks from remaining candidates → classic bank split.
- * All questions are about the movie in your head, not what you want to watch tonight.
+ * Classic electronic-20Q style picker (information gain + phased features).
+ *
+ * Phase order (only ask a question if it still divides remaining candidates):
+ *  1. Year / era
+ *  2. Animated vs live-action
+ *  3. Core genre
+ *  4. Female lead
+ *  5. Setting/plot forks that still divide what's left
  */
 export function selectSmartNextQuestion(
   scoredPool: ScoredMovie[],
@@ -1124,7 +1175,6 @@ export function selectSmartNextQuestion(
   questionCount: number = 0,
   history: { q: WizardQuestion; answer: WizardAnswer }[] = []
 ): WizardQuestion | null {
-  // Only ask about movies that still fit Yes/No answers
   const constrained = filterPoolByHistory(
     scoredPool.map((s) => s.movie),
     history
@@ -1134,44 +1184,77 @@ export function selectSmartNextQuestion(
       ? scoredPool.filter((s) => constrained.some((m) => String(m.id) === String(s.movie.id)))
       : scoredPool;
 
-  const pool = topContenderMovies(constrainedScored, questionCount < 3 ? 40 : 28);
+  const pool = topContenderMovies(
+    constrainedScored,
+    Math.min(50, Math.max(12, constrainedScored.length))
+  );
   if (pool.length === 0) return null;
 
-  // First 1–2 turns: broad factual openers when they still split the pool
-  if (questionCount < 2) {
-    for (const opener of OPENER_QUESTIONS) {
-      if (askedIds.has(opener.id)) continue;
-      const hits = pool.filter((m) => opener.match(m) >= 0.55).length;
+  const insight = getNarrowingInsight(pool, questionCount);
+  const withHint = (q: WizardQuestion | null): WizardQuestion | null =>
+    q ? { ...q, focusHint: q.focusHint || insight.hint } : null;
+
+  const eraDone =
+    hasAnsweredEra ||
+    [...askedIds].some(
+      (id) =>
+        ERA_QUESTION_IDS.includes(id) ||
+        id.startsWith('cluster_era_') ||
+        id.startsWith('dyn_year_')
+    );
+  const animDone = ANIMATION_QUESTION_IDS.some((id) => askedIds.has(id));
+  const genreAnswers = CORE_GENRE_IDS.filter((id) => askedIds.has(id)).length;
+  const leadDone = askedIds.has('female_lead');
+
+  // Phase 1: YEAR
+  if (!eraDone) {
+    const preferredOrder = ['era_modern', 'era_pre2010', 'era_90s', 'era_80s', 'era_classic'];
+    for (const id of preferredOrder) {
+      if (askedIds.has(id)) continue;
+      const q = QUESTION_BANK.find((x) => x.id === id);
+      if (!q) continue;
+      const hits = pool.filter((m) => q.match(m) >= 0.45).length;
       const bal = balanceScore(hits, pool.length);
-      if (bal >= 0.25) {
-        return {
-          ...opener,
-          focusHint: getNarrowingInsight(pool, questionCount).hint,
-        };
-      }
+      if (bal >= 0.12) return withHint(q);
     }
   }
 
-  // Prefer a discriminative question derived from what's left in the candidate set
-  const clustered = generateClusterQuestion(pool, askedIds, hasAnsweredEra);
-  if (clustered) {
-    const insight = getNarrowingInsight(pool, questionCount);
-    return {
-      ...clustered,
-      focusHint: clustered.focusHint || insight.hint,
-    };
+  // Phase 2: ANIMATED? — ask whenever ANY remaining titles are animated (even if rare).
+  // Classic 20Q: a rare "yes" pins the title; a "no" cheaply drops cartoons.
+  if (!animDone) {
+    const animQ = QUESTION_BANK.find((x) => x.id === 'animated');
+    if (animQ && !askedIds.has(animQ.id)) {
+      const hits = pool.filter((m) => animQ.match(m) >= 0.45).length;
+      if (hits >= 1 && hits < pool.length) return withHint(animQ);
+    }
   }
 
-  // Fall back to information-gain over the static bank
-  const bankQ = selectNextQuestion(constrainedScored, askedIds, hasAnsweredEra);
-  if (bankQ) {
-    return {
-      ...bankQ,
-      focusHint: getNarrowingInsight(pool, questionCount).hint,
-    };
+  // Phase 3: CORE GENRE (up to 2)
+  if (genreAnswers < 2) {
+    const genreBank = bankByIds([
+      'comedy', 'horror', 'action', 'scifi', 'thriller', 'romance', 'crime',
+      'fantasy_magic', 'war', 'detective', 'musical',
+    ]);
+    const genreQ = pickBestSplit(pool, genreBank, askedIds, 0.18);
+    if (genreQ) return withHint(genreQ);
+
+    const clusterGenre = generateClusterQuestion(pool, askedIds, true);
+    if (clusterGenre && clusterGenre.id.startsWith('cluster_genre_')) {
+      return withHint(clusterGenre);
+    }
   }
 
-  return null;
+  // Phase 4: FEMALE LEAD
+  if (!leadDone) {
+    const leadQ = pickBestSplit(pool, bankByIds(['female_lead']), askedIds, 0.1);
+    if (leadQ) return withHint(leadQ);
+  }
+
+  // Phase 5: remaining discriminative forks
+  const clustered = generateClusterQuestion(pool, askedIds, true);
+  if (clustered) return withHint(clustered);
+
+  return withHint(selectNextQuestion(constrainedScored, askedIds, true));
 }
 
 /** When any question is answered, mark its conceptual twins so we never re-ask. */

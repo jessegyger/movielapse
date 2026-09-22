@@ -43,3 +43,5 @@ next-env.d.ts
 # firebase
 .firebase/
 
+# local 20Q sim bundle
+scripts/_sim.cjs
