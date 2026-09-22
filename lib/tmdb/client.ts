@@ -88,12 +88,15 @@ export class TMDbClient {
     page?: number;
     sortBy?: string;
     genreId?: number;
+    withoutGenreIds?: number[];
     yearGte?: string;
     yearLte?: string;
+    runtimeLte?: number;
+    runtimeGte?: number;
     watchProviderId?: number;
     watchRegion?: string;
     releaseFormat?: 'all' | 'dvd' | 'theatrical';
-  } = {}): Promise<{ results: Movie[]; totalPages: number }> {
+  } = {}): Promise<{ results: Movie[]; totalPages: number; totalResults: number }> {
     const page = options.page || 1;
     let url = `${TMDB_BASE_URL}/discover/movie?api_key=${this.apiKey}&page=${page}&include_adult=false`;
 
@@ -119,12 +122,21 @@ export class TMDbClient {
     if (options.genreId) {
       url += `&with_genres=${options.genreId}`;
     }
+    if (options.withoutGenreIds && options.withoutGenreIds.length > 0) {
+      url += `&without_genres=${options.withoutGenreIds.join(',')}`;
+    }
 
     if (options.yearGte) {
       url += `&primary_release_date.gte=${options.yearGte}`;
     }
     if (options.yearLte) {
       url += `&primary_release_date.lte=${options.yearLte}`;
+    }
+    if (options.runtimeLte) {
+      url += `&with_runtime.lte=${options.runtimeLte}`;
+    }
+    if (options.runtimeGte) {
+      url += `&with_runtime.gte=${options.runtimeGte}`;
     }
 
     if (options.watchProviderId) {
@@ -139,13 +151,14 @@ export class TMDbClient {
         return {
           results: (data.results || []).map((m: any) => this.formatTMDbMovie(m)),
           totalPages: data.total_pages || 1,
+          totalResults: data.total_results || 0,
         };
       }
     } catch (err) {
       console.warn('TMDb discover fetch failed', err);
     }
 
-    return { results: SEED_MOVIES.slice(0, 20), totalPages: 1 };
+    return { results: SEED_MOVIES.slice(0, 20), totalPages: 1, totalResults: SEED_MOVIES.length };
   }
 
   // Get movies currently playing in theatres

@@ -39,6 +39,16 @@ interface QuestionDef {
 const QUESTION_BANK: QuestionDef[] = [
   {
     id: 1,
+    question: 'Animated, kids, or adult?',
+    options: [
+      { label: 'Animated', tag: 'want_animated', icon: '🎨' },
+      { label: 'Kids / family', tag: 'want_kids', icon: '👨‍👩‍👧' },
+      { label: 'Adults (no kids stuff)', tag: 'want_adult', icon: '🔞' },
+      { label: "Don't care — show everything", tag: 'audience_any', icon: '🎲' },
+    ],
+  },
+  {
+    id: 2,
     question: 'What kind of movie?',
     options: [
       { label: 'Comedy', tag: 'comedy', icon: '😂' },
@@ -49,16 +59,6 @@ const QUESTION_BANK: QuestionDef[] = [
       { label: 'Sci-Fi / Fantasy', tag: 'scifi', icon: '🚀' },
       { label: 'Drama', tag: 'drama', icon: '🎭' },
       { label: "Don't care", tag: 'any', icon: '🎲' },
-    ],
-  },
-  {
-    id: 2,
-    question: 'Animated, kids, or adult?',
-    options: [
-      { label: 'Animated', tag: 'want_animated', icon: '🎨' },
-      { label: 'Kids / family', tag: 'want_kids', icon: '👨‍👩‍👧' },
-      { label: 'Adults (no kids stuff)', tag: 'want_adult', icon: '🔞' },
-      { label: "Don't care", tag: 'audience_any', icon: '🎲' },
     ],
   },
   {
@@ -177,8 +177,11 @@ const GENRE_TMDB: Record<string, number> = {
 };
 
 const PAGE_SIZE = 24;
-const FOUND_THRESHOLD = 3; // celebrate when top matches shrink this small
+const FOUND_THRESHOLD = 3;
 const MIN_QS_BEFORE_FOUND = 4;
+const INITIAL_PAGES = 12; // ~240 titles loaded; TMDb total shown separately
+const ANIMATION_GENRE = 16;
+const FAMILY_GENRE = 10751;
 
 function isSpaceMovie(movie: Movie): boolean {
   const title = (movie.title || '').toLowerCase();
@@ -239,8 +242,9 @@ function scoreMovie(movie: Movie, tags: string[]): number {
 
   if (tags.includes('fast') && runtime <= 135) score += 5;
   if (tags.includes('slow') && (genres.includes('Drama') || genres.includes('Mystery'))) score += 5;
-  if (tags.includes('short') && runtime <= 105) score += 7;
-  if (tags.includes('epic') && runtime >= 145) score += 7;
+  if (tags.includes('short') && runtime > 0 && runtime <= 110) score += 8;
+  if (tags.includes('epic') && runtime >= 140) score += 8;
+  // Don't hard-penalize missing runtime — discover lists often omit it
 
   if (tags.includes('era_2020s') && releaseYear >= 2020) score += 10;
   if (tags.includes('era_2010s') && releaseYear >= 2010 && releaseYear <= 2019) score += 10;
@@ -294,7 +298,6 @@ function isKidsFriendly(movie: Movie): boolean {
 function hardPasses(movie: Movie, tags: string[]): boolean {
   const genres = movie.genres || [];
   const releaseYear = parseInt(movie.release_date?.slice(0, 4) || '0', 10);
-  const runtime = movie.runtime || 120;
 
   // Audience first — Animated / Kids / Adult are hard walls
   if (tags.includes('want_animated') && !isAnimated(movie)) return false;
@@ -320,8 +323,8 @@ function hardPasses(movie: Movie, tags: string[]): boolean {
   if (tags.includes('era_80s') && !(releaseYear >= 1980 && releaseYear <= 1989)) return false;
   if (tags.includes('era_classic') && !(releaseYear > 0 && releaseYear < 1980)) return false;
 
-  if (tags.includes('short') && runtime > 110) return false;
-  if (tags.includes('epic') && runtime < 140) return false;
+  // Pace is soft only — list endpoints rarely include runtime, so hard-cutting
+  // "short" was wiping almost everything down to a few seed titles.
 
   if (tags.includes('no_gore') && genres.includes('Horror')) return false;
 
@@ -334,38 +337,69 @@ function hardPasses(movie: Movie, tags: string[]): boolean {
   return true;
 }
 
-async function fetchBigPool(genreTag?: string): Promise<Movie[]> {
+type PoolQuery = {
+  genreId?: number;
+  withoutGenreIds?: number[];
+  runtimeLte?: number;
+  runtimeGte?: number;
+};
+
+function poolQueryFromTags(tags: string[]): PoolQuery {
+  const q: PoolQuery = {};
+  for (const [tag, id] of Object.entries(GENRE_TMDB)) {
+    if (tags.includes(tag) && tag !== 'animation' && tag !== 'family') {
+      q.genreId = id;
+      break;
+    }
+  }
+  if (tags.includes('want_animated')) q.genreId = ANIMATION_GENRE;
+  if (tags.includes('want_kids') && !q.genreId) q.genreId = FAMILY_GENRE;
+  if (tags.includes('want_adult')) {
+    q.withoutGenreIds = [ANIMATION_GENRE, FAMILY_GENRE];
+  }
+  if (tags.includes('space') && !q.genreId) q.genreId = GENRE_TMDB.scifi;
+  if (tags.includes('short')) q.runtimeLte = 110;
+  if (tags.includes('epic')) q.runtimeGte = 140;
+  return q;
+}
+
+async function fetchDiscoverPages(
+  query: PoolQuery,
+  fromPage: number,
+  pageCount: number
+): Promise<{ movies: Movie[]; totalResults: number; totalPages: number }> {
   const map = new Map<string, Movie>();
-  const add = (list: Movie[]) => {
-    list.forEach((m) => map.set(String(m.id), m));
-  };
+  let totalResults = 0;
+  let totalPages = 1;
 
-  add(tmdb.getSeedMovies());
-
-  const genreId = genreTag && GENRE_TMDB[genreTag] ? GENRE_TMDB[genreTag] : undefined;
-  const pages = [1, 2, 3, 4, 5];
-
-  await Promise.all(
-    pages.map(async (page) => {
-      if (genreId) {
-        const { results } = await tmdb.discoverMovies({
-          page,
-          genreId,
-          sortBy: 'popularity.desc',
-        });
-        add(results);
-      } else {
-        const [pop, top] = await Promise.all([
-          tmdb.getPopularMovies(page),
-          tmdb.getTopRatedMovies(page),
-        ]);
-        add(pop.results);
-        add(top.results);
-      }
-    })
+  const pages = Array.from({ length: pageCount }, (_, i) => fromPage + i);
+  const batches = await Promise.all(
+    pages.map((page) =>
+      tmdb.discoverMovies({
+        page,
+        genreId: query.genreId,
+        withoutGenreIds: query.withoutGenreIds,
+        runtimeLte: query.runtimeLte,
+        runtimeGte: query.runtimeGte,
+        sortBy: 'popularity.desc',
+      })
+    )
   );
 
-  return Array.from(map.values());
+  for (const batch of batches) {
+    totalResults = Math.max(totalResults, batch.totalResults || 0);
+    totalPages = Math.max(totalPages, batch.totalPages || 1);
+    batch.results.forEach((m) => map.set(String(m.id), m));
+  }
+
+  // Only blend seeds when browsing broadly (no genre lock)
+  if (!query.genreId && !query.withoutGenreIds?.length) {
+    tmdb.getSeedMovies().forEach((m) => {
+      if (!map.has(String(m.id))) map.set(String(m.id), m);
+    });
+  }
+
+  return { movies: Array.from(map.values()), totalResults, totalPages };
 }
 
 export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
@@ -378,8 +412,13 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
   const [ranked, setRanked] = useState<Movie[]>([]);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [isLoadingPool, setIsLoadingPool] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [catalogTotal, setCatalogTotal] = useState<number | null>(null);
+  const [nextPage, setNextPage] = useState(1);
+  const [maxPages, setMaxPages] = useState(1);
   const [foundMovie, setFoundMovie] = useState<Movie | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const activeQueryRef = useRef<PoolQuery>({});
 
   const currentQ = QUESTION_BANK[Math.min(currentStep, QUESTION_BANK.length - 1)];
   const answeredCount = Object.keys(answers).length;
@@ -389,7 +428,6 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
       nextTags.length === 0
         ? pool
         : pool.filter((m) => hardPasses(m, nextTags));
-    // Never fall back to the unfiltered pool — that reintroduces non-matches (e.g. non-space after Space)
     const working = filtered.length > 0 ? filtered : pool;
     const scored = working
       .map((movie) => ({ movie, score: scoreMovie(movie, nextTags) }))
@@ -400,32 +438,48 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
     return scored;
   }, []);
 
-  // Initial pool
+  const loadPoolForTags = useCallback(
+    async (tags: string[], reset = true) => {
+      const query = poolQueryFromTags(tags);
+      activeQueryRef.current = query;
+      setIsLoadingPool(true);
+      const { movies, totalResults, totalPages } = await fetchDiscoverPages(
+        query,
+        1,
+        INITIAL_PAGES
+      );
+      setMoviePool(movies);
+      setCatalogTotal(totalResults > 0 ? totalResults : movies.length);
+      setMaxPages(totalPages);
+      setNextPage(INITIAL_PAGES + 1);
+      const scored = recompute(movies, tags);
+      setIsLoadingPool(false);
+      return scored;
+    },
+    [recompute]
+  );
+
+  // Initial broad pool
   useEffect(() => {
     let alive = true;
     (async () => {
-      setIsLoadingPool(true);
-      const pool = await fetchBigPool();
+      const scored = await loadPoolForTags([]);
       if (!alive) return;
-      setMoviePool(pool);
-      setRanked(pool.slice().sort((a, b) => (b.vote_average || 0) - (a.vote_average || 0)));
-      setIsLoadingPool(false);
+      void scored;
     })();
     return () => {
       alive = false;
     };
-  }, []);
+  }, [loadPoolForTags]);
 
   const celebrateIfReady = (scored: Movie[], nextAnswers: Record<number, { label: string; tag: string }>, stepAfter: number) => {
     const n = Object.keys(nextAnswers).length;
     if (n < MIN_QS_BEFORE_FOUND) return false;
     if (scored.length === 0) return false;
 
-    // Strong filter: few hard survivors left
     const hardLeft = scored.filter((m) => hardPasses(m, Object.values(nextAnswers).map((a) => a.tag)));
-    const tight = hardLeft.length > 0 && hardLeft.length <= FOUND_THRESHOLD;
-
-    // Or finished the bank with a clear #1
+    // Only celebrate when truly tiny — never because we under-fetched
+    const tight = hardLeft.length > 0 && hardLeft.length <= FOUND_THRESHOLD && (catalogTotal ?? 999) <= 40;
     const finishedBank = stepAfter >= QUESTION_BANK.length;
 
     if (tight || finishedBank) {
@@ -447,27 +501,9 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
     setAnswers(nextAnswers);
     const nextTags = Object.values(nextAnswers).map((a) => a.tag);
 
-    // Genre / audience / space → refresh discover pool so filters have enough titles
-    let pool = moviePool;
-    let genreForFetch: string | undefined;
-    if (currentStep === 0 && option.tag !== 'any' && GENRE_TMDB[option.tag]) {
-      genreForFetch = option.tag;
-    } else if (option.tag === 'want_animated') {
-      genreForFetch = 'animation';
-    } else if (option.tag === 'want_kids') {
-      genreForFetch = 'family';
-    } else if (option.tag === 'space') {
-      genreForFetch = 'scifi';
-    }
-
-    if (genreForFetch) {
-      setIsLoadingPool(true);
-      pool = await fetchBigPool(genreForFetch);
-      setMoviePool(pool);
-      setIsLoadingPool(false);
-    }
-
-    const scored = recompute(pool, nextTags);
+    // Always refresh discover against the current tag combo (audience + genre + pace…)
+    // so counts reflect TMDb totals, not a tiny cached page dump.
+    const scored = await loadPoolForTags(nextTags);
     const nextStep = currentStep + 1;
 
     if (celebrateIfReady(scored, nextAnswers, nextStep)) {
@@ -477,7 +513,6 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
     if (nextStep < QUESTION_BANK.length) {
       setCurrentStep(nextStep);
     } else {
-      // No more questions — pick winner
       celebrateIfReady(scored, nextAnswers, nextStep);
     }
   };
@@ -487,23 +522,38 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
     setCurrentStep(0);
     setFoundMovie(null);
     setVisibleCount(PAGE_SIZE);
-    setIsLoadingPool(true);
-    fetchBigPool().then((pool) => {
-      setMoviePool(pool);
-      setRanked(pool.slice().sort((a, b) => (b.vote_average || 0) - (a.vote_average || 0)));
-      setIsLoadingPool(false);
-    });
+    loadPoolForTags([]);
+  };
+
+  const loadMoreFromTmdb = async () => {
+    if (isLoadingMore || nextPage > maxPages) return;
+    setIsLoadingMore(true);
+    const tags = Object.values(answers).map((a) => a.tag);
+    const { movies } = await fetchDiscoverPages(activeQueryRef.current, nextPage, 4);
+    setNextPage((p) => p + 4);
+    const merged = new Map(moviePool.map((m) => [String(m.id), m]));
+    movies.forEach((m) => merged.set(String(m.id), m));
+    const pool = Array.from(merged.values());
+    setMoviePool(pool);
+    recompute(pool, tags);
+    setVisibleCount((c) => c + PAGE_SIZE);
+    setIsLoadingMore(false);
   };
 
   const onListScroll = () => {
     const el = listRef.current;
     if (!el) return;
-    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 120) {
-      setVisibleCount((c) => Math.min(c + PAGE_SIZE, ranked.length));
+    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 160) {
+      if (visibleCount < ranked.length) {
+        setVisibleCount((c) => Math.min(c + PAGE_SIZE, ranked.length));
+      } else {
+        void loadMoreFromTmdb();
+      }
     }
   };
 
   const visible = ranked.slice(0, visibleCount);
+  const displayTotal = catalogTotal && catalogTotal > ranked.length ? catalogTotal : ranked.length;
 
   // ── Found celebration ──
   if (foundMovie) {
@@ -665,11 +715,17 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
               <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
             </span>
-            {isLoadingPool ? 'Loading…' : `${ranked.length.toLocaleString()} matches`}
-            {answeredCount > 0 ? ' · live' : ''}
+            {isLoadingPool
+              ? 'Loading…'
+              : displayTotal >= 1000
+                ? `${displayTotal.toLocaleString()}+ matches`
+                : `${displayTotal.toLocaleString()} matches`}
+            {answeredCount > 0 && !isLoadingPool ? ' · live' : ''}
           </span>
-          {visibleCount < ranked.length ? (
-            <span className="text-[9px] text-neutral-500">Scroll for more</span>
+          {visibleCount < ranked.length || nextPage <= maxPages ? (
+            <span className="text-[9px] text-neutral-500">
+              {isLoadingMore ? 'Loading more…' : 'Scroll for more'}
+            </span>
           ) : null}
         </div>
 
@@ -718,14 +774,25 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
               ))}
             </div>
           )}
-          {visibleCount < ranked.length ? (
+          {visibleCount < ranked.length || nextPage <= maxPages ? (
             <div className="flex justify-center py-3">
               <button
                 type="button"
-                onClick={() => setVisibleCount((c) => Math.min(c + PAGE_SIZE, ranked.length))}
-                className="text-xs font-semibold text-amber-400 px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/25"
+                disabled={isLoadingMore}
+                onClick={() => {
+                  if (visibleCount < ranked.length) {
+                    setVisibleCount((c) => Math.min(c + PAGE_SIZE, ranked.length));
+                  } else {
+                    void loadMoreFromTmdb();
+                  }
+                }}
+                className="text-xs font-semibold text-amber-400 px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/25 disabled:opacity-50"
               >
-                Show more ({ranked.length - visibleCount} left)
+                {isLoadingMore
+                  ? 'Loading…'
+                  : visibleCount < ranked.length
+                    ? `Show more (${ranked.length - visibleCount} loaded)`
+                    : `Load more from TMDb (${displayTotal.toLocaleString()}+)`}
               </button>
             </div>
           ) : null}
