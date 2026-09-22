@@ -674,6 +674,7 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
     if (tight || finishedBank) {
       const winner = (tight ? hardLeft : scored)[0];
       setFoundMovie(winner);
+      setVisibleCount(Math.max(PAGE_SIZE * 2, 48));
       if (typeof window !== 'undefined') {
         window.scrollTo({ top: 0, behavior: 'auto' });
       }
@@ -707,8 +708,6 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
     } else {
       celebrateIfReady(scored, nextAnswers, nextStep);
     }
-    // Collapse so the filtered grid gets the screen — expand to keep drilling
-    setFiltersOpen(false);
   };
 
   const handleReset = () => {
@@ -750,58 +749,76 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
   const visible = ranked.slice(0, visibleCount);
   const displayTotal = catalogTotal && catalogTotal > ranked.length ? catalogTotal : ranked.length;
 
-  // ── Found celebration ──
+  // ── Found celebration + endlessly scrollable close matches ──
   if (foundMovie) {
+    const closeMatches = visible.filter((m) => String(m.id) !== String(foundMovie.id));
     return (
-      <div className="w-full max-w-3xl mx-auto max-h-[calc(100dvh-5rem)] overflow-y-auto overscroll-contain px-3 sm:px-4 pt-3 sm:pt-4 pb-10 flex flex-col items-center gap-4 animate-fade-in scroll-mt-20">
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-bold shrink-0">
-          <Sparkles className="w-3.5 h-3.5" /> We found your movie
+      <div className="w-full h-[calc(100dvh-5rem)] max-h-[calc(100dvh-5rem)] overflow-hidden flex flex-col gap-2 p-2 sm:p-3 animate-fade-in">
+        <div className="shrink-0 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 bg-neutral-900/90 border border-neutral-800 rounded-xl px-3 py-3">
+          <button
+            type="button"
+            onClick={() => (onSelectMovie ? onSelectMovie(foundMovie) : onPlayTrailer(foundMovie))}
+            className="flex items-center gap-3 group text-left min-w-0"
+          >
+            <div className="relative w-16 sm:w-20 aspect-[2/3] rounded-lg overflow-hidden border-2 border-amber-400 shrink-0 shadow-lg shadow-amber-500/20">
+              {foundMovie.poster_path ? (
+                <Image
+                  src={foundMovie.poster_path}
+                  alt={foundMovie.title}
+                  fill
+                  sizes="80px"
+                  className="object-cover group-hover:scale-105 transition"
+                  unoptimized={foundMovie.poster_path.startsWith('http')}
+                />
+              ) : null}
+            </div>
+            <div className="min-w-0">
+              <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[10px] font-bold mb-1">
+                <Sparkles className="w-3 h-3" /> We found your movie
+              </div>
+              <h2 className="text-lg sm:text-xl font-black text-white truncate">{foundMovie.title}</h2>
+              <p className="text-xs text-neutral-400">
+                ★ {foundMovie.vote_average?.toFixed(1) ?? '—'} · {foundMovie.release_date?.slice(0, 4)}
+              </p>
+            </div>
+          </button>
+          <div className="flex gap-2 sm:ml-auto shrink-0">
+            <button
+              type="button"
+              onClick={() => onPlayTrailer(foundMovie)}
+              className="px-3.5 py-2 rounded-xl bg-amber-500 text-neutral-950 font-bold text-sm flex items-center gap-1.5"
+            >
+              <Play className="w-4 h-4 fill-current" /> Trailer
+            </button>
+            <button
+              type="button"
+              onClick={handleReset}
+              className="px-3.5 py-2 rounded-xl bg-neutral-800 text-neutral-200 font-semibold text-sm flex items-center gap-1.5"
+            >
+              <RotateCcw className="w-3.5 h-3.5" /> Again
+            </button>
+          </div>
         </div>
-        <button
-          type="button"
-          onClick={() => (onSelectMovie ? onSelectMovie(foundMovie) : onPlayTrailer(foundMovie))}
-          className="w-full max-w-xs flex flex-col items-center gap-3 group shrink-0"
-        >
-          <div className="relative w-44 sm:w-52 aspect-[2/3] rounded-2xl overflow-hidden border-2 border-amber-400 shadow-2xl shadow-amber-500/20">
-            {foundMovie.poster_path ? (
-              <Image
-                src={foundMovie.poster_path}
-                alt={foundMovie.title}
-                fill
-                sizes="220px"
-                className="object-cover group-hover:scale-105 transition"
-                unoptimized={foundMovie.poster_path.startsWith('http')}
-              />
+
+        <div className="flex-1 min-h-0 rounded-xl border border-neutral-800 bg-neutral-950/90 flex flex-col overflow-hidden">
+          <div className="flex items-center justify-between px-2.5 py-1.5 border-b border-neutral-800/80 shrink-0">
+            <p className="text-[10px] uppercase font-bold text-neutral-400 tracking-wider">
+              Also close · {displayTotal.toLocaleString()}
+              {displayTotal > ranked.length ? '+' : ''} in filter
+            </p>
+            {visibleCount < ranked.length || nextPage <= maxPages ? (
+              <span className="text-[9px] text-neutral-500">
+                {isLoadingMore ? 'Loading more…' : 'Scroll for more'}
+              </span>
             ) : null}
           </div>
-          <div className="text-center">
-            <h2 className="text-xl font-black text-white">{foundMovie.title}</h2>
-            <p className="text-sm text-neutral-400 mt-0.5">
-              ★ {foundMovie.vote_average?.toFixed(1) ?? '—'} · {foundMovie.release_date?.slice(0, 4)}
-            </p>
-          </div>
-        </button>
-        <div className="flex gap-2 shrink-0">
-          <button
-            type="button"
-            onClick={() => onPlayTrailer(foundMovie)}
-            className="px-4 py-2 rounded-xl bg-amber-500 text-neutral-950 font-bold text-sm flex items-center gap-1.5"
+          <div
+            ref={listRef}
+            onScroll={onListScroll}
+            className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-2 sm:p-3"
           >
-            <Play className="w-4 h-4 fill-current" /> Trailer
-          </button>
-          <button
-            type="button"
-            onClick={handleReset}
-            className="px-4 py-2 rounded-xl bg-neutral-800 text-neutral-200 font-semibold text-sm flex items-center gap-1.5"
-          >
-            <RotateCcw className="w-3.5 h-3.5" /> Again
-          </button>
-        </div>
-        {ranked.length > 1 ? (
-          <div className="w-full mt-2">
-            <p className="text-[10px] uppercase font-bold text-neutral-500 mb-2 text-center">Also close</p>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 pb-4">
-              {ranked.slice(1, 40).map((m, i) => (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8 gap-2.5 sm:gap-3">
+              {closeMatches.map((m, i) => (
                 <button
                   key={m.id}
                   type="button"
@@ -821,14 +838,36 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
                 </button>
               ))}
             </div>
+            {visibleCount < ranked.length || nextPage <= maxPages ? (
+              <div className="flex justify-center py-4">
+                <button
+                  type="button"
+                  disabled={isLoadingMore}
+                  onClick={() => {
+                    if (visibleCount < ranked.length) {
+                      setVisibleCount((c) => Math.min(c + PAGE_SIZE, ranked.length));
+                    } else {
+                      void loadMoreFromTmdb();
+                    }
+                  }}
+                  className="text-xs font-semibold text-amber-400 px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/25 disabled:opacity-50"
+                >
+                  {isLoadingMore
+                    ? 'Loading…'
+                    : visibleCount < ranked.length
+                      ? `Show more (${ranked.length - visibleCount} loaded)`
+                      : `Load more from TMDb`}
+                </button>
+              </div>
+            ) : null}
           </div>
-        ) : null}
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="w-full max-w-7xl mx-auto h-[calc(100dvh-5rem)] max-h-[calc(100dvh-5rem)] overflow-hidden flex flex-col p-2 sm:p-3 gap-2">
+    <div className="w-full h-[calc(100dvh-5rem)] max-h-[calc(100dvh-5rem)] overflow-hidden flex flex-col p-2 sm:p-3 gap-2">
       {/* Thin progress */}
       <div className="flex items-center gap-2 shrink-0">
         <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider shrink-0">
@@ -1012,7 +1051,7 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
               <Loader2 className="w-4 h-4 animate-spin" /> Loading movies…
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5 sm:gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8 gap-2.5 sm:gap-3">
               {visible.map((movie, i) => (
                 <button
                   key={movie.id}
