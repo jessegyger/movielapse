@@ -144,7 +144,6 @@ const QUESTION_BANK: QuestionDef[] = [
       { label: 'Nothing too sad', tag: 'no_tragedy', icon: '🌤️' },
       { label: 'Super sad', tag: 'super_sad', icon: '😢' },
       { label: 'No nudity', tag: 'no_nudity', icon: '👕' },
-      { label: 'Lots of nudity', tag: 'lots_nudity', icon: '🔥' },
       { label: 'Anything goes', tag: 'raw', icon: '💥' },
       { label: "Don't care", tag: 'deal_any', icon: '🎲' },
     ],
@@ -349,7 +348,6 @@ function scoreMovie(movie: Movie, tags: string[]): number {
   if (tags.includes('no_tragedy') && textHas(movie, /\b(tragic|grief|dies|death of|suicide)\b/i)) score -= 12;
   if (tags.includes('super_sad') && (genres.includes('Drama') || textHas(movie, /\b(tragic|grief|loss|heartbreak)\b/i))) score += 8;
   if (tags.includes('no_nudity') && textHas(movie, /\b(erotic|nude|nudity|sexual)\b/i)) score -= 15;
-  if (tags.includes('lots_nudity')) score += 12; // Pool already keyword-locked; keep them on top
   if (tags.includes('rate_r_only') || tags.includes('rate_nc17')) score += 2;
 
   return score;
@@ -494,11 +492,7 @@ function poolQueryFromTags(tags: string[]): PoolQuery {
     q.includeAdult = true;
   }
 
-  // Nudity: TMDb has keyword tags (not a 0–10 nudity meter). Drive discover from those.
-  if (tags.includes('lots_nudity')) {
-    q.withKeywords = mergeKeywords(q.withKeywords, KW_NUDITY);
-    q.includeAdult = true;
-  }
+  // Nudity: TMDb keyword tags — “no nudity” excludes tagged titles
   if (tags.includes('no_nudity')) {
     q.withoutKeywords = KW_NUDITY;
   }
