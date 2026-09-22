@@ -378,10 +378,47 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
 
   return (
     <div className="w-full max-w-7xl mx-auto py-4 sm:py-6 px-3 sm:px-4 animate-fade-in">
-      {/* Top Shelf Navigation Tabs & Live Search Bar */}
-      <div className="flex flex-col lg:flex-row items-center justify-between gap-3 sm:gap-4 mb-4">
+
+      {/* Desktop/Tablet Search Bar — full-width, prominent, above the tab pills */}
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          executeSearch(searchQuery);
+        }}
+        className="hidden sm:flex items-center gap-2 mb-4"
+      >
+        <div className="relative flex-1">
+          <Search className="w-4 h-4 text-neutral-400 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => handleSearchChange(e.target.value)}
+            placeholder="Search by actor, director, title, or genre..."
+            className="w-full pl-11 pr-10 py-3 rounded-xl bg-neutral-900 border border-neutral-800 text-sm text-white placeholder-neutral-500 focus:outline-none focus:border-amber-500 shadow-inner transition"
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={clearSearch}
+              className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-full text-neutral-400 hover:text-white hover:bg-neutral-800 transition"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+        <button
+          type="submit"
+          className="px-5 py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-neutral-950 text-sm font-bold transition shrink-0 shadow flex items-center gap-1.5"
+        >
+          <Search className="w-4 h-4 stroke-[2.5]" />
+          <span>Search</span>
+        </button>
+      </form>
+
+      {/* Top Shelf Navigation Tabs */}
+      <div className="flex items-center gap-3 sm:gap-4 mb-4">
         {/* Navigation Tabs */}
-        <div className="flex items-center gap-1 sm:gap-1.5 p-1 sm:p-1.5 rounded-2xl bg-neutral-900 border border-neutral-800 overflow-x-auto max-w-full no-scrollbar">
+        <div className="flex items-center gap-1 sm:gap-1.5 p-1 sm:p-1.5 rounded-2xl bg-neutral-900 border border-neutral-800 overflow-x-auto max-w-full no-scrollbar flex-1">
           <button
             onClick={() => setActiveTab('trending')}
             className={`flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs font-bold transition shrink-0 ${
@@ -454,43 +491,6 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
             <Bookmark className="w-3.5 h-3.5 fill-current" /> Watchlist ({watchlistMovies.length})
           </button>
         </div>
-
-        {/* Search input with explicit Search button (Hidden on mobile because it's sticky in the top bar) */}
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            executeSearch(searchQuery);
-          }}
-          className="hidden sm:flex items-center gap-1.5 w-full lg:w-auto"
-        >
-          <div className="relative flex-1 lg:w-72">
-            <Search className="w-4 h-4 text-neutral-500 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              value={searchQuery}
-              onFocus={() => setIsSearchOpen(true)}
-              onChange={(e) => handleSearchChange(e.target.value)}
-              placeholder="Search actor, director, title..."
-              className="w-full pl-9 pr-8 py-2 sm:py-2.5 rounded-xl bg-neutral-900 border border-neutral-800 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-amber-500 shadow-inner"
-            />
-            {searchQuery && (
-              <button
-                type="button"
-                onClick={clearSearch}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 rounded-full text-neutral-400 hover:text-white"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
-          <button
-            type="submit"
-            className="px-3 py-2 sm:py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-neutral-950 text-xs font-bold transition shrink-0 shadow flex items-center gap-1"
-          >
-            <Search className="w-3.5 h-3.5 stroke-[2.5]" />
-            <span>Search</span>
-          </button>
-        </form>
       </div>
 
       {/* Full-Screen Mobile Search Overlay */}

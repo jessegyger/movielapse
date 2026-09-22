@@ -28,7 +28,7 @@ export const TrailerModal: React.FC<TrailerModalProps> = ({ movie, isOpen, onClo
   if (!isOpen || !movie) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-fade-in">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-fade-in">
       <div className="relative w-full max-w-4xl bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden shadow-2xl">
         {/* Header bar */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-800 bg-neutral-950/80">
