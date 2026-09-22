@@ -524,11 +524,17 @@ function femaleLeadWeight(m: Movie): number {
 
 // ── Live TMDb Discover Fetcher (Queries all 1,000,000+ Movies) ────────────────
 
+export interface DiscoverResult {
+  movies: Movie[];
+  /** Real TMDb count for the current filter set (from total_results — one query, no million fetches) */
+  totalResults: number;
+}
+
 export async function queryLiveTMDbDiscover(
   filters: LiveDiscoverFilters,
   pages: number = 2,
   startPage: number = 1
-): Promise<Movie[]> {
+): Promise<DiscoverResult> {
   const apiKey = tmdb.getApiKey() || DEFAULT_TMDB_API_KEY;
   const baseUrl = 'https://api.themoviedb.org/3/discover/movie';
 
@@ -566,11 +572,17 @@ export async function queryLiveTMDbDiscover(
   }
 
   const pageList = Array.from({ length: pages }, (_, i) => startPage + i);
+  let totalResults = 0;
+
   const requests = pageList.map(async (p) => {
     try {
       const res = await fetch(`${baseUrl}?${query}&page=${p}`);
       if (res.ok) {
         const data = await res.json();
+        // Same total on every page — take it from the first successful response
+        if (typeof data.total_results === 'number') {
+          totalResults = data.total_results;
+        }
         return (data.results || []).map((m: any) => tmdb.formatTMDbMovie(m));
       }
     } catch (err) {
@@ -580,7 +592,15 @@ export async function queryLiveTMDbDiscover(
   });
 
   const results = await Promise.all(requests);
-  return results.flat().filter((m) => m && m.poster_path && m.title);
+  const movies = results.flat().filter((m) => m && m.poster_path && m.title);
+  return { movies, totalResults };
+}
+
+/** Format big TMDb counts for the header (482193 → 482,193) */
+export function formatMatchCount(n: number): string {
+  if (!n || n < 0) return '—';
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
+  return n.toLocaleString('en-US');
 }
 
 // ── Live TMDb Search for Actor, Character, or Plot Keyword ───────────────────

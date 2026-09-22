@@ -33,6 +33,7 @@ import {
   markRelatedAskedIds,
   filterPoolByHistory,
   hasHardDiscoverFilters,
+  formatMatchCount,
   ActorCandidate,
   POPULAR_STUDIOS,
   MUTUAL_EXCLUSIONS,
@@ -91,6 +92,8 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
   const [isQueryingTMDb, setIsQueryingTMDb] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  /** Real TMDb total_results for current discover filters — updates as answers tighten filters */
+  const [tmdbMatchTotal, setTmdbMatchTotal] = useState<number | null>(null);
 
   // Prevent background body scroll leak
   useEffect(() => {
@@ -115,6 +118,7 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
     setHasAnsweredEra(false);
     setRejectedActorIds(new Set());
     setCurrentPage(1);
+    setTmdbMatchTotal(null);
 
     const initFilters = createInitialFilters();
     setFilters(initFilters);
@@ -124,10 +128,11 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
     setClueMatches(new Set());
     setIsQueryingTMDb(true);
 
-    queryLiveTMDbDiscover(initFilters, 3, 1).then((movies) => {
+    queryLiveTMDbDiscover(initFilters, 3, 1).then(({ movies, totalResults }) => {
       const map = new Map<string, Movie>();
       movies.forEach((m) => map.set(String(m.id), m));
       setAllMovies(map);
+      if (totalResults > 0) setTmdbMatchTotal(totalResults);
 
       const scored = scoreAllMovies(Array.from(map.values()), []);
       setScoredPool(scored);
@@ -235,7 +240,8 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
       setIsQueryingTMDb(true);
       setCurrentPage(1);
 
-      const liveDiscovered = await queryLiveTMDbDiscover(updatedFilters, 3, 1);
+      const { movies: liveDiscovered, totalResults } = await queryLiveTMDbDiscover(updatedFilters, 3, 1);
+      if (totalResults > 0) setTmdbMatchTotal(totalResults);
       const hard = hasHardDiscoverFilters(updatedFilters);
 
       let workingMap: Map<string, Movie>;
@@ -588,7 +594,7 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
     const nextPage = currentPage + 1;
     setCurrentPage(nextPage);
 
-    const more = await queryLiveTMDbDiscover(filters, 2, nextPage);
+    const { movies: more } = await queryLiveTMDbDiscover(filters, 2, nextPage);
     const updatedMap = new Map(allMovies);
     more.forEach((m) => updatedMap.set(String(m.id), m));
     setAllMovies(updatedMap);
@@ -606,6 +612,7 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
     setHasAnsweredEra(false);
     setRejectedActorIds(new Set());
     setCurrentPage(1);
+    setTmdbMatchTotal(null);
 
     const initFilters = createInitialFilters();
     setFilters(initFilters);
@@ -615,10 +622,11 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
     setClueMatches(new Set());
     setIsQueryingTMDb(true);
 
-    queryLiveTMDbDiscover(initFilters, 3, 1).then((movies) => {
+    queryLiveTMDbDiscover(initFilters, 3, 1).then(({ movies, totalResults }) => {
       const map = new Map<string, Movie>();
       movies.forEach((m) => map.set(String(m.id), m));
       setAllMovies(map);
+      if (totalResults > 0) setTmdbMatchTotal(totalResults);
 
       const scored = scoreAllMovies(Array.from(map.values()), []);
       setScoredPool(scored);
@@ -673,24 +681,33 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
       <div className="flex-1 w-full max-w-5xl overflow-y-auto px-3 sm:px-4 py-2.5 space-y-2.5 overscroll-contain">
         {/* ── QUESTION CARD (COMPACT VERTICAL SPACE) ── */}
         <div className="bg-gradient-to-b from-neutral-900 to-neutral-950 border border-neutral-800 rounded-2xl p-3 sm:p-5 text-center shadow-lg relative">
-          {/* Header: question # + matches inline */}
-          <div className="flex items-center justify-between gap-2 text-xs text-neutral-400 mb-1">
-            <span className="font-bold text-amber-400 uppercase tracking-widest text-[10px] truncate">
+          {/* Header: Q# left · matches CENTER · status right */}
+          <div className="grid grid-cols-3 items-center gap-1 text-xs mb-1">
+            <span className="font-bold text-amber-400 uppercase tracking-widest text-[10px] text-left">
               Q{questionCount + 1}
               {questionCount < MAX_STANDARD_QUESTIONS ? `/${MAX_STANDARD_QUESTIONS}` : '+'}
-              <span className="mx-1.5 text-neutral-700 font-normal">·</span>
+            </span>
+            <div className="text-center leading-tight min-w-0">
               {isQueryingTMDb ? (
-                <span className="text-amber-400 normal-case tracking-normal inline-flex items-center gap-1">
-                  <Loader2 className="w-3 h-3 animate-spin" /> Narrowing
+                <span className="text-amber-400 inline-flex items-center justify-center gap-1 font-bold text-[11px]">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  Counting…
                 </span>
               ) : (
-                <span className="text-emerald-400 normal-case tracking-normal font-bold">
-                  {displayedCandidates.length} matches
-                </span>
+                <>
+                  <div className="text-emerald-400 font-black text-sm sm:text-base tabular-nums tracking-tight">
+                    {formatMatchCount(tmdbMatchTotal ?? displayedCandidates.length)}
+                  </div>
+                  <div className="text-[9px] text-neutral-500 font-semibold uppercase tracking-wider">
+                    matches left
+                  </div>
+                </>
               )}
-            </span>
-            <span className="text-[10px] text-neutral-500 font-semibold shrink-0 hidden sm:inline">
-              Live TMDb
+            </div>
+            <span className="text-[10px] text-neutral-500 font-semibold text-right truncate">
+              {displayedCandidates.length < (tmdbMatchTotal || 0)
+                ? `top ${displayedCandidates.length}`
+                : 'Live TMDb'}
             </span>
           </div>
 
