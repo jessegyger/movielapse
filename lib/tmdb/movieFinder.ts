@@ -22,12 +22,20 @@ export interface WizardQuestion {
   id: string;
   question: string;
   hint?: string;
+  /** Short "thinking out loud" line shown under the question */
+  focusHint?: string;
   isEra?: boolean;
   actorPhoto?: string;
   actorName?: string;
   match: (m: Movie) => number;
   onYes?: DiscoverParamUpdate;
   onNo?: DiscoverParamUpdate;
+}
+
+export interface NarrowingInsight {
+  hint: string;
+  dominantLabels: string[];
+  candidateCount: number;
 }
 
 export interface ScoredMovie {
@@ -567,7 +575,428 @@ export function scoreAllMovies(
   }).sort((a, b) => b.score - a.score);
 }
 
-// ── Next Question Selector ───────────────────────────────────────────────────
+// ── Free cluster brain: questions from what's actually left ───────────────────
+
+const GENRE_TMDB_IDS: Record<string, string> = {
+  Action: '28',
+  Adventure: '12',
+  Animation: '16',
+  Comedy: '35',
+  Crime: '80',
+  Documentary: '99',
+  Drama: '18',
+  Family: '10751',
+  Fantasy: '14',
+  History: '36',
+  Horror: '27',
+  Music: '10402',
+  Mystery: '9648',
+  Romance: '10749',
+  'Science Fiction': '878',
+  Thriller: '53',
+  War: '10752',
+  Western: '37',
+};
+
+/** Human, single-focus wording for genre forks grounded in the remaining pool */
+const GENRE_CLUSTER_COPY: Record<
+  string,
+  { question: string; hint: string; label: string }
+> = {
+  Animation: {
+    label: 'animated',
+    question: 'Looking at what’s left — is it an animated movie?',
+    hint: 'Hand-drawn, CGI, stop-motion, or anime',
+  },
+  Comedy: {
+    label: 'comedies',
+    question: 'Among the remaining matches, is comedy the main point?',
+    hint: 'Built to make you laugh more than tense or cry',
+  },
+  Horror: {
+    label: 'horror',
+    question: 'From what’s left — are you after something scary?',
+    hint: 'Horror meant to frighten or unsettle',
+  },
+  Action: {
+    label: 'action',
+    question: 'Do the remaining picks lean action — fights, chases, set pieces?',
+    hint: 'Kinetic spectacle over quiet drama',
+  },
+  Thriller: {
+    label: 'thrillers',
+    question: 'Is it more of a suspense thriller than a straight drama?',
+    hint: 'Tension, dread, and plot pressure',
+  },
+  Romance: {
+    label: 'romance',
+    question: 'Is a romantic relationship the emotional center of the story?',
+    hint: 'Love story front and center',
+  },
+  'Science Fiction': {
+    label: 'sci-fi',
+    question: 'Among these, is it science fiction?',
+    hint: 'Futuristic tech, speculative worlds, sci-fi ideas',
+  },
+  Fantasy: {
+    label: 'fantasy',
+    question: 'Does it live in a fantasy world — magic, myths, unreal realms?',
+    hint: 'Wizards, creatures, enchanted settings',
+  },
+  Crime: {
+    label: 'crime',
+    question: 'Does it revolve around crime, cops, or the underworld?',
+    hint: 'Heists, gangsters, investigations with teeth',
+  },
+  Mystery: {
+    label: 'mysteries',
+    question: 'Is solving a mystery or whodunit the main hook?',
+    hint: 'Clues, secrets, detective energy',
+  },
+  War: {
+    label: 'war films',
+    question: 'Is it set in a military war with soldiers on the front?',
+    hint: 'Combat, wartime stakes',
+  },
+  Family: {
+    label: 'family films',
+    question: 'Is it aimed at a family / all-ages audience?',
+    hint: 'Safe for kids or multi-generational watch',
+  },
+  Adventure: {
+    label: 'adventure',
+    question: 'Is it more of a big adventure / quest film?',
+    hint: 'Journeys, exploration, discovery',
+  },
+  Drama: {
+    label: 'dramas',
+    question: 'Is it primarily a character drama rather than pure genre thrills?',
+    hint: 'Emotion and relationships over spectacle',
+  },
+  Music: {
+    label: 'musicals',
+    question: 'Do characters break into song, or is music the spine of the story?',
+    hint: 'Musical numbers or music-world stories',
+  },
+  History: {
+    label: 'historical',
+    question: 'Is it based on real history or a true historical period?',
+    hint: 'Period piece rooted in real events',
+  },
+  Western: {
+    label: 'westerns',
+    question: 'Is it a western — frontier, cowboys, dusty towns?',
+    hint: 'Classic or modern western',
+  },
+  Documentary: {
+    label: 'documentaries',
+    question: 'Is it a documentary rather than a fictional story?',
+    hint: 'Non-fiction',
+  },
+};
+
+interface ClusterFork {
+  id: string;
+  balance: number; // 1 = perfect 50/50
+  question: WizardQuestion;
+  label: string;
+}
+
+function balanceScore(matchCount: number, total: number): number {
+  if (total < 2 || matchCount < 1 || matchCount >= total) return -1;
+  const ratio = matchCount / total;
+  // Prefer clean mid-splits; lightly penalize extreme 15/85 forks
+  if (ratio < 0.18 || ratio > 0.82) return -1;
+  return 1.0 - Math.abs(ratio - 0.5) * 2;
+}
+
+function topContenderMovies(scoredPool: ScoredMovie[], limit = 36): Movie[] {
+  return scoredPool.slice(0, limit).map((s) => s.movie);
+}
+
+function genrePresence(m: Movie, genre: string): boolean {
+  return (m.genres || []).some((g) => g.toLowerCase() === genre.toLowerCase());
+}
+
+/**
+ * Describe what the current pool "feels like" so the UI can show thinking.
+ * Purely local — no model required.
+ */
+export function getNarrowingInsight(
+  movies: Movie[],
+  questionCount: number = 0
+): NarrowingInsight {
+  if (movies.length === 0) {
+    return { hint: 'Waiting for matches…', dominantLabels: [], candidateCount: 0 };
+  }
+
+  const genreCounts = new Map<string, number>();
+  let yearSum = 0;
+  let yearN = 0;
+  for (const m of movies) {
+    for (const g of m.genres || []) {
+      genreCounts.set(g, (genreCounts.get(g) || 0) + 1);
+    }
+    const y = Number(m.release_date?.slice(0, 4) || 0);
+    if (y > 1920) {
+      yearSum += y;
+      yearN += 1;
+    }
+  }
+
+  const dominant = [...genreCounts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .filter(([, c]) => c >= Math.max(2, movies.length * 0.22))
+    .slice(0, 2)
+    .map(([g]) => g);
+
+  const avgYear = yearN ? Math.round(yearSum / yearN) : 0;
+  const eraBit =
+    avgYear >= 2018 ? 'recent' : avgYear >= 2000 ? '2000s–2010s' : avgYear >= 1980 ? 'late-20th-century' : avgYear > 0 ? 'older' : '';
+
+  const labels = dominant.map((g) => GENRE_CLUSTER_COPY[g]?.label || g.toLowerCase());
+  let hint: string;
+  if (questionCount === 0) {
+    hint = `Starting broad · ${movies.length} live matches`;
+  } else if (labels.length >= 2) {
+    hint = `Narrowing toward ${labels[0]} & ${labels[1]}${eraBit ? ` · ${eraBit}` : ''} · ${movies.length} left`;
+  } else if (labels.length === 1) {
+    hint = `Zeroing in on ${labels[0]}${eraBit ? ` · ${eraBit}` : ''} · ${movies.length} left`;
+  } else {
+    hint = `Reading the remaining set · ${movies.length} matches`;
+  }
+
+  return { hint, dominantLabels: labels, candidateCount: movies.length };
+}
+
+/**
+ * Build yes/no forks from the actual shape of remaining candidates.
+ * Questions are worded as if we’re looking at the shortlist — feels deliberate, not scripted.
+ */
+export function generateClusterQuestion(
+  remaining: Movie[],
+  askedIds: Set<string>,
+  hasAnsweredEra: boolean = false
+): WizardQuestion | null {
+  if (remaining.length < 3) return null;
+
+  const forks: ClusterFork[] = [];
+  const n = remaining.length;
+
+  // 1) Genre forks grounded in pool composition
+  const genreCounts = new Map<string, number>();
+  for (const m of remaining) {
+    for (const g of m.genres || []) {
+      genreCounts.set(g, (genreCounts.get(g) || 0) + 1);
+    }
+  }
+
+  for (const [genre, count] of genreCounts) {
+    const copy = GENRE_CLUSTER_COPY[genre];
+    if (!copy) continue;
+    const id = `cluster_genre_${genre.toLowerCase().replace(/\s+/g, '_')}`;
+    if (askedIds.has(id) || askedIds.has(genre.toLowerCase().replace(/\s+/g, '_'))) continue;
+    // Skip if an equivalent bank question was already answered
+    const bankAliases: Record<string, string[]> = {
+      Animation: ['animated', 'theme_animated'],
+      Comedy: ['comedy', 'theme_humor_comedy'],
+      Horror: ['horror'],
+      Action: ['action'],
+      Thriller: ['thriller'],
+      Romance: ['romance', 'theme_romance_love'],
+      'Science Fiction': ['scifi', 'theme_space_futuristic'],
+      Fantasy: ['fantasy_magic', 'theme_magic_spells'],
+      Crime: ['crime'],
+      Mystery: ['detective'],
+      War: ['war'],
+      Family: ['theme_family_children'],
+      Music: ['musical', 'theme_singing_songs'],
+    };
+    if ((bankAliases[genre] || []).some((a) => askedIds.has(a))) continue;
+
+    const bal = balanceScore(count, n);
+    if (bal < 0) continue;
+
+    const tmdbId = GENRE_TMDB_IDS[genre];
+    forks.push({
+      id,
+      balance: bal + (genre === 'Drama' ? -0.08 : 0), // drama is too common — prefer sharper genres
+      label: copy.label,
+      question: {
+        id,
+        question: copy.question,
+        hint: copy.hint,
+        focusHint: `~${Math.round((count / n) * 100)}% of remaining lean ${copy.label}`,
+        match: (m) => (genrePresence(m, genre) ? 1.0 : 0.0),
+        onYes: tmdbId ? { with_genres: tmdbId } : undefined,
+        onNo: tmdbId ? { without_genres: tmdbId } : undefined,
+      },
+    });
+  }
+
+  // 2) Era median fork (only if era not locked yet)
+  if (!hasAnsweredEra) {
+    const years = remaining
+      .map((m) => Number(m.release_date?.slice(0, 4) || 0))
+      .filter((y) => y > 1920)
+      .sort((a, b) => a - b);
+    if (years.length >= 4) {
+      const median = years[Math.floor(years.length / 2)];
+      const id = `cluster_era_median_${median}`;
+      if (!askedIds.has(id) && ![...askedIds].some((x) => x.startsWith('era_'))) {
+        const before = remaining.filter((m) => Number(m.release_date?.slice(0, 4) || 0) <= median).length;
+        const bal = balanceScore(before, n);
+        if (bal >= 0) {
+          forks.push({
+            id,
+            balance: bal * 0.95,
+            label: 'era',
+            question: {
+              id,
+              question: `Looking at what’s left — was it released in ${median} or earlier?`,
+              hint: 'Splits the shortlist by release year',
+              focusHint: `Era fork around ${median}`,
+              isEra: true,
+              match: (m) => (Number(m.release_date?.slice(0, 4) || 0) <= median ? 1.0 : 0.0),
+              onYes: { primary_release_date_lte: `${median}-12-31` },
+              onNo: { primary_release_date_gte: `${median + 1}-01-01` },
+            },
+          });
+        }
+      }
+    }
+  }
+
+  // 3) Soft tone / plot axes from overview text (pool-aware)
+  const toneAxes: {
+    id: string;
+    label: string;
+    question: string;
+    hint: string;
+    test: (m: Movie) => boolean;
+  }[] = [
+    {
+      id: 'cluster_tone_dark',
+      label: 'darker tone',
+      question: 'Among these, are you craving something darker and heavier?',
+      hint: 'Bleak, intense, or emotionally bruising — not light comfort',
+      test: (m) =>
+        /\b(dark|bleak|brutal|revenge|murder|kill|violent|tragic|dystopia|noir)\b/i.test(
+          `${m.title} ${m.overview || ''}`
+        ) ||
+        (m.genres || []).some((g) => ['Horror', 'Thriller', 'Crime', 'War'].includes(g)),
+    },
+    {
+      id: 'cluster_tone_feelgood',
+      label: 'feel-good',
+      question: 'Want something warmer and more feel-good from this shortlist?',
+      hint: 'Uplifting, cozy, or hopeful rather than punishing',
+      test: (m) =>
+        /\b(heartwarming|uplifting|feel-good|friendship|family|inspiring|hope)\b/i.test(
+          `${m.title} ${m.overview || ''}`
+        ) ||
+        (m.genres || []).some((g) => ['Comedy', 'Family', 'Animation', 'Romance'].includes(g)),
+    },
+    {
+      id: 'cluster_plot_twist',
+      label: 'mind-benders',
+      question: 'Are you after something mind-bending — twists, puzzles, unreliable reality?',
+      hint: 'Puzzle-box plots and reality-bending turns',
+      test: (m) =>
+        /\b(twist|memory|dream|simulation|identity|timeline|reality|mind|puzzle)\b/i.test(
+          `${m.title} ${m.overview || ''}`
+        ),
+    },
+    {
+      id: 'cluster_based_true',
+      label: 'true stories',
+      question: 'Should it be based on a true story or real events?',
+      hint: 'Biographical or historically rooted',
+      test: (m) =>
+        (m.genres || []).some((g) => ['History', 'Documentary'].includes(g)) ||
+        /\b(true story|based on|real events|biography)\b/i.test(`${m.title} ${m.overview || ''}`),
+    },
+  ];
+
+  for (const axis of toneAxes) {
+    if (askedIds.has(axis.id)) continue;
+    const matches = remaining.filter(axis.test).length;
+    const bal = balanceScore(matches, n);
+    if (bal < 0) continue;
+    forks.push({
+      id: axis.id,
+      balance: bal * 0.92,
+      label: axis.label,
+      question: {
+        id: axis.id,
+        question: axis.question,
+        hint: axis.hint,
+        focusHint: `~${Math.round((matches / n) * 100)}% of remaining fit “${axis.label}”`,
+        match: (m) => (axis.test(m) ? 1.0 : 0.0),
+      },
+    });
+  }
+
+  // 4) Runtime fork when lengths clearly diverge
+  const runtimes = remaining.map((m) => m.runtime || 0).filter((r) => r > 40);
+  if (runtimes.length >= 6) {
+    const sorted = [...runtimes].sort((a, b) => a - b);
+    const medianRt = sorted[Math.floor(sorted.length / 2)];
+    const id = `cluster_runtime_${medianRt}`;
+    if (!askedIds.has(id) && medianRt >= 90 && medianRt <= 160) {
+      const longer = remaining.filter((m) => (m.runtime || 105) > medianRt).length;
+      const bal = balanceScore(longer, n);
+      if (bal >= 0.35) {
+        forks.push({
+          id,
+          balance: bal * 0.7,
+          label: 'runtime',
+          question: {
+            id,
+            question: `Is it a longer watch — over about ${medianRt} minutes?`,
+            hint: 'Helps separate tight films from sprawling ones',
+            focusHint: `Runtime split near ${medianRt}m`,
+            match: (m) => ((m.runtime || 105) > medianRt ? 1.0 : 0.0),
+          },
+        });
+      }
+    }
+  }
+
+  if (forks.length === 0) return null;
+  forks.sort((a, b) => b.balance - a.balance);
+  return forks[0].question;
+}
+
+/** Early openers — human mood questions before we go surgical */
+const OPENER_QUESTIONS: WizardQuestion[] = [
+  {
+    id: 'opener_intense',
+    question: 'Are you in the mood for something intense tonight?',
+    hint: 'High stakes, tension, or adrenaline — not soft comfort',
+    focusHint: 'Reading tonight’s energy first',
+    match: (m) => {
+      const g = m.genres || [];
+      if (g.some((x) => ['Thriller', 'Horror', 'Action', 'Crime', 'War'].includes(x))) return 1.0;
+      if (g.some((x) => ['Comedy', 'Family', 'Romance', 'Animation'].includes(x))) return 0.15;
+      return 0.4;
+    },
+  },
+  {
+    id: 'opener_familiar',
+    question: 'Want something widely known — a title most people have heard of?',
+    hint: 'Crowd-famous vs deeper cuts',
+    focusHint: 'Familiarity check',
+    match: (m) => {
+      const votes = m.vote_count || 0;
+      if (votes >= 8000) return 1.0;
+      if (votes >= 2500) return 0.7;
+      if (votes >= 800) return 0.35;
+      return 0.1;
+    },
+    onYes: { vote_count_gte: 1500 },
+  },
+];
 
 export function selectNextQuestion(
   scoredPool: ScoredMovie[],
@@ -606,6 +1035,109 @@ export function selectNextQuestion(
   }
 
   return best;
+}
+
+/**
+ * Free “smart” picker — no WebLLM / cloud model required.
+ * Order: mood openers → cluster forks from remaining set → classic bank split.
+ */
+export function selectSmartNextQuestion(
+  scoredPool: ScoredMovie[],
+  askedIds: Set<string>,
+  hasAnsweredEra: boolean = false,
+  questionCount: number = 0
+): WizardQuestion | null {
+  const pool = topContenderMovies(scoredPool, questionCount < 3 ? 40 : 28);
+  if (pool.length === 0) return null;
+
+  // First 1–2 turns: human openers when they still split the pool
+  if (questionCount < 2) {
+    for (const opener of OPENER_QUESTIONS) {
+      if (askedIds.has(opener.id)) continue;
+      const hits = pool.filter((m) => opener.match(m) >= 0.55).length;
+      const bal = balanceScore(hits, pool.length);
+      if (bal >= 0.25) {
+        return {
+          ...opener,
+          focusHint: getNarrowingInsight(pool, questionCount).hint,
+        };
+      }
+    }
+  }
+
+  // Prefer a question literally derived from what’s left
+  const clustered = generateClusterQuestion(pool, askedIds, hasAnsweredEra);
+  if (clustered) {
+    const insight = getNarrowingInsight(pool, questionCount);
+    return {
+      ...clustered,
+      focusHint: clustered.focusHint || insight.hint,
+    };
+  }
+
+  // Fall back to information-gain over the static bank
+  const bankQ = selectNextQuestion(scoredPool, askedIds, hasAnsweredEra);
+  if (bankQ) {
+    return {
+      ...bankQ,
+      focusHint: getNarrowingInsight(pool, questionCount).hint,
+    };
+  }
+
+  return null;
+}
+
+/** When any question is answered, mark its conceptual twins so we never re-ask. */
+export function markRelatedAskedIds(questionId: string, asked: Set<string>): void {
+  asked.add(questionId);
+
+  const CLUSTER_TO_BANK: Record<string, string[]> = {
+    cluster_genre_animation: ['animated', 'theme_animated', 'disney_pixar', 'theme_disney'],
+    cluster_genre_comedy: ['comedy', 'theme_humor_comedy'],
+    cluster_genre_horror: ['horror'],
+    cluster_genre_action: ['action'],
+    cluster_genre_thriller: ['thriller'],
+    cluster_genre_romance: ['romance', 'theme_romance_love'],
+    cluster_genre_science_fiction: ['scifi', 'theme_space_futuristic', 'outer_space'],
+    cluster_genre_fantasy: ['fantasy_magic', 'theme_magic_spells'],
+    cluster_genre_crime: ['crime'],
+    cluster_genre_mystery: ['detective'],
+    cluster_genre_war: ['war'],
+    cluster_genre_family: ['theme_family_children'],
+    cluster_genre_music: ['musical', 'theme_singing_songs'],
+    cluster_genre_history: ['based_on_true'],
+    cluster_based_true: ['based_on_true'],
+  };
+
+  const BANK_TO_CLUSTER: Record<string, string[]> = {
+    animated: ['cluster_genre_animation', 'theme_animated'],
+    theme_animated: ['cluster_genre_animation', 'animated'],
+    comedy: ['cluster_genre_comedy', 'theme_humor_comedy'],
+    theme_humor_comedy: ['cluster_genre_comedy', 'comedy'],
+    horror: ['cluster_genre_horror'],
+    action: ['cluster_genre_action'],
+    thriller: ['cluster_genre_thriller'],
+    romance: ['cluster_genre_romance', 'theme_romance_love'],
+    theme_romance_love: ['cluster_genre_romance', 'romance'],
+    scifi: ['cluster_genre_science_fiction'],
+    fantasy_magic: ['cluster_genre_fantasy'],
+    crime: ['cluster_genre_crime'],
+    detective: ['cluster_genre_mystery'],
+    war: ['cluster_genre_war'],
+    musical: ['cluster_genre_music', 'theme_singing_songs'],
+    based_on_true: ['cluster_based_true', 'cluster_genre_history'],
+  };
+
+  (CLUSTER_TO_BANK[questionId] || []).forEach((id) => asked.add(id));
+  (BANK_TO_CLUSTER[questionId] || []).forEach((id) => asked.add(id));
+
+  if (questionId.startsWith('cluster_era_') || questionId.startsWith('era_') || questionId.startsWith('dyn_year_')) {
+    asked.add('era_modern');
+    asked.add('era_pre2010');
+    asked.add('era_90s');
+    asked.add('era_80s');
+    asked.add('era_classic');
+  }
 }
 
 // ── Actor Picture Identification & Dynamic On-The-Fly Questions ─────────────

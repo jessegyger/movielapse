@@ -21,7 +21,7 @@ import {
   queryLiveTMDbDiscover,
   searchLiveTMDb,
   scoreAllMovies,
-  selectNextQuestion,
+  selectSmartNextQuestion,
   createInitialFilters,
   LiveDiscoverFilters,
   WizardQuestion,
@@ -29,6 +29,8 @@ import {
   ScoredMovie,
   fetchTopActorsForCandidates,
   generateDynamicQuestion,
+  getNarrowingInsight,
+  markRelatedAskedIds,
   ActorCandidate,
   POPULAR_STUDIOS,
   MUTUAL_EXCLUSIONS,
@@ -129,7 +131,7 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
       const scored = scoreAllMovies(Array.from(map.values()), []);
       setScoredPool(scored);
 
-      const firstQ = selectNextQuestion(scored, new Set(), false);
+      const firstQ = selectSmartNextQuestion(scored, new Set(), false, 0);
       setCurrentQuestion(firstQ);
       setIsQueryingTMDb(false);
 
@@ -240,16 +242,22 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
       setScoredPool(scored);
       setIsQueryingTMDb(false);
 
-      // 1. Try standard next question (only asks questions where candidates actually match)
-      let nextQ = selectNextQuestion(scored, updatedAskedIds, eraAnswered);
+      // 1. Free smart brain: openers → cluster forks from remaining set → bank
+      let nextQ = selectSmartNextQuestion(scored, updatedAskedIds, eraAnswered, newCount);
 
-      // 2. If standard questions exhausted, generate on-the-fly dynamic question from top narrowed contenders
+      // 2. If exhausted, generate on-the-fly dynamic question from top narrowed contenders
       if (!nextQ) {
         const topScore = scored[0]?.score ?? 0;
         const dynamicThreshold = Math.max(3.0, topScore * 0.4);
         const topRemaining = scored.filter((s) => s.score >= dynamicThreshold).map((s) => s.movie);
         const pool = topRemaining.length >= 2 ? topRemaining : scored.slice(0, 15).map((s) => s.movie);
         nextQ = generateDynamicQuestion(pool, updatedAskedIds, candidateActors);
+        if (nextQ) {
+          nextQ = {
+            ...nextQ,
+            focusHint: getNarrowingInsight(pool, newCount).hint,
+          };
+        }
       }
 
       setCurrentQuestion(nextQ || null);
@@ -278,22 +286,43 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
       let eraAnswered = hasAnsweredEra;
 
       const newAsked = new Set(askedIds);
-      newAsked.add(currentQuestion.id);
+      markRelatedAskedIds(currentQuestion.id, newAsked);
 
       // ── Smart Question Implication ──
+      const CLUSTER_EXCLUSION_ALIAS: Record<string, string> = {
+        cluster_genre_animation: 'animated',
+        cluster_genre_comedy: 'comedy',
+        cluster_genre_horror: 'horror',
+        cluster_genre_action: 'action',
+        cluster_genre_thriller: 'thriller',
+        cluster_genre_romance: 'romance',
+        cluster_genre_science_fiction: 'scifi',
+        cluster_genre_fantasy: 'fantasy_magic',
+        cluster_genre_crime: 'crime',
+        cluster_genre_mystery: 'detective',
+        cluster_genre_war: 'war',
+        cluster_genre_family: 'theme_family_children',
+        cluster_genre_music: 'musical',
+      };
+      const exclusionLookupIds = [
+        currentQuestion.id,
+        CLUSTER_EXCLUSION_ALIAS[currentQuestion.id],
+      ].filter(Boolean) as string[];
+
       if (answer === 'yes') {
-        // Exclude completely opposite genres
-        if (MUTUAL_EXCLUSIONS[currentQuestion.id]) {
-          MUTUAL_EXCLUSIONS[currentQuestion.id].forEach(id => newAsked.add(id));
-        }
-        // Also skip the 'equivalent' question so we don't ask it dynamically
-        if (EQUIVALENT_QUESTIONS[currentQuestion.id]) {
-          EQUIVALENT_QUESTIONS[currentQuestion.id].forEach(id => newAsked.add(id));
+        for (const key of exclusionLookupIds) {
+          if (MUTUAL_EXCLUSIONS[key]) {
+            MUTUAL_EXCLUSIONS[key].forEach((id) => newAsked.add(id));
+          }
+          if (EQUIVALENT_QUESTIONS[key]) {
+            EQUIVALENT_QUESTIONS[key].forEach((id) => newAsked.add(id));
+          }
         }
       } else if (answer === 'skip' || answer === 'no' || answer === 'sometimes') {
-        // If they skip or say NO to a concept, don't ask the dynamic/static counterpart!
-        if (EQUIVALENT_QUESTIONS[currentQuestion.id]) {
-          EQUIVALENT_QUESTIONS[currentQuestion.id].forEach(id => newAsked.add(id));
+        for (const key of exclusionLookupIds) {
+          if (EQUIVALENT_QUESTIONS[key]) {
+            EQUIVALENT_QUESTIONS[key].forEach((id) => newAsked.add(id));
+          }
         }
       }
 
@@ -359,10 +388,13 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
     const scored = scoreAllMovies(Array.from(allMovies.values()), newHistory, newClueIds);
     setScoredPool(scored);
 
-    let nextQ = selectNextQuestion(scored, newAsked, hasAnsweredEra);
+    let nextQ = selectSmartNextQuestion(scored, newAsked, hasAnsweredEra, newCount);
     if (!nextQ) {
       const topRemaining = scored.filter((s) => s.score >= 0.5).map((s) => s.movie);
       nextQ = generateDynamicQuestion(topRemaining, newAsked, candidateActors);
+      if (nextQ) {
+        nextQ = { ...nextQ, focusHint: getNarrowingInsight(topRemaining, newCount).hint };
+      }
     }
     setCurrentQuestion(nextQ || null);
   };
@@ -398,10 +430,13 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
     const scored = scoreAllMovies(Array.from(allMovies.values()), newHistory, clueMatches);
     setScoredPool(scored);
 
-    let nextQ = selectNextQuestion(scored, newAsked, hasAnsweredEra);
+    let nextQ = selectSmartNextQuestion(scored, newAsked, hasAnsweredEra, questionCount + 1);
     if (!nextQ) {
       const topRemaining = scored.filter((s) => s.score >= 0.5).map((s) => s.movie);
       nextQ = generateDynamicQuestion(topRemaining, newAsked, []);
+      if (nextQ) {
+        nextQ = { ...nextQ, focusHint: getNarrowingInsight(topRemaining, questionCount + 1).hint };
+      }
     }
     setCurrentQuestion(nextQ || null);
   };
@@ -514,7 +549,7 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
       const scored = scoreAllMovies(Array.from(map.values()), []);
       setScoredPool(scored);
 
-      const firstQ = selectNextQuestion(scored, new Set(), false);
+      const firstQ = selectSmartNextQuestion(scored, new Set(), false, 0);
       setCurrentQuestion(firstQ);
       setIsQueryingTMDb(false);
       fetchTopActorsForCandidates(movies.slice(0, 10)).then(setCandidateActors);
@@ -610,6 +645,12 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
                     {currentQuestion.hint && (
                       <p className="text-neutral-400 text-xs sm:text-sm">{currentQuestion.hint}</p>
                     )}
+                    {currentQuestion.focusHint && (
+                      <p className="text-[11px] text-amber-500/80 font-medium tracking-wide flex items-center justify-center sm:justify-start gap-1.5">
+                        <Sparkles className="w-3 h-3 shrink-0" />
+                        {currentQuestion.focusHint}
+                      </p>
+                    )}
                   </div>
                 </div>
               ) : (
@@ -621,6 +662,13 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
                     <p className="text-neutral-400 text-xs">{currentQuestion.hint}</p>
                   )}
                 </>
+              )}
+
+              {currentQuestion.focusHint && (
+                <p className="text-[11px] text-amber-500/80 font-medium tracking-wide flex items-center justify-center gap-1.5">
+                  <Sparkles className="w-3 h-3 shrink-0" />
+                  {currentQuestion.focusHint}
+                </p>
               )}
 
               {/* ── COMPACT HELPER PILLS DIRECTLY ABOVE YES/NO BUTTONS ── */}
