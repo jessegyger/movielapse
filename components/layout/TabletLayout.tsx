@@ -10,12 +10,15 @@ interface TabletLayoutProps {
   onSelectAppMode: (mode: AppMode) => void;
   seedMovies: Movie[];
   lovedMovies: Movie[];
+  dislikedMovies?: Movie[];
   watchlistMovies: Movie[];
   onPlayTrailer: (movie: Movie) => void;
   onSelectMovie?: (movie: Movie) => void;
   onLove: (movie: Movie) => void;
   onDislike: (movie: Movie) => void;
   onWatchlist: (movie: Movie) => void;
+  onWatched?: (movie: Movie) => void;
+  watchedMovies?: Movie[];
   children: React.ReactNode;
 }
 
@@ -24,12 +27,15 @@ export const TabletLayout: React.FC<TabletLayoutProps> = ({
   onSelectAppMode,
   seedMovies,
   lovedMovies,
+  dislikedMovies = [],
   watchlistMovies,
+  watchedMovies = [],
   onPlayTrailer,
   onSelectMovie,
   onLove,
   onDislike,
   onWatchlist,
+  onWatched,
   children,
 }) => {
   return (
@@ -99,8 +105,11 @@ export const TabletLayout: React.FC<TabletLayoutProps> = ({
                 onLove={onLove}
                 onDislike={onDislike}
                 onWatchlist={onWatchlist}
+                onWatched={onWatched}
                 isLoved={lovedMovies.some((m) => String(m.id) === String(movie.id))}
+                isDisliked={dislikedMovies.some((m) => String(m.id) === String(movie.id))}
                 isWatchlist={watchlistMovies.some((m) => String(m.id) === String(movie.id))}
+                isWatched={watchedMovies.some((m) => String(m.id) === String(movie.id))}
                 compact={true}
               />
             ))}

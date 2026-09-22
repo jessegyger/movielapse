@@ -157,9 +157,11 @@ export default function Home() {
             onLove={store.markLoved}
             onDislike={store.markDisliked}
             onWatchlist={store.markWatchlist}
+            onWatched={store.toggleWatched}
             lovedMovies={store.loved}
             dislikedMovies={store.disliked}
             watchlistMovies={store.watchlist}
+            watchedMovies={store.watched}
             tasteSummaryPrompt={store.getTasteSummaryPrompt()}
           />
         );
@@ -171,9 +173,11 @@ export default function Home() {
             onLove={store.markLoved}
             onDislike={store.markDisliked}
             onWatchlist={store.markWatchlist}
+            onWatched={store.toggleWatched}
             lovedMovies={store.loved}
             dislikedMovies={store.disliked}
             watchlistMovies={store.watchlist}
+            watchedMovies={store.watched}
             tasteSummaryPrompt={store.getTasteSummaryPrompt()}
           />
         );
@@ -186,9 +190,11 @@ export default function Home() {
             onLove={store.markLoved}
             onDislike={store.markDisliked}
             onWatchlist={store.markWatchlist}
+            onWatched={store.toggleWatched}
             lovedMovies={store.loved}
             dislikedMovies={store.disliked}
             watchlistMovies={store.watchlist}
+            watchedMovies={store.watched}
             allSeedMovies={seedMovies}
             searchQuery={searchQuery}
             onSearchChange={setSearchQuery}
@@ -233,12 +239,15 @@ export default function Home() {
           onSelectAppMode={store.setAppMode}
           seedMovies={seedMovies}
           lovedMovies={store.loved}
+          dislikedMovies={store.disliked}
           watchlistMovies={store.watchlist}
+          watchedMovies={store.watched}
           onPlayTrailer={handlePlayTrailer}
           onSelectMovie={handleSelectMovie}
           onLove={store.markLoved}
           onDislike={store.markDisliked}
           onWatchlist={store.markWatchlist}
+          onWatched={store.toggleWatched}
         >
           {renderModeContent()}
         </TabletLayout>
@@ -266,9 +275,11 @@ export default function Home() {
         onLove={store.markLoved}
         onDislike={store.markDisliked}
         onWatchlist={store.markWatchlist}
+        onWatched={store.toggleWatched}
         isLoved={selectedDetailMovie ? store.loved.some((m) => String(m.id) === String(selectedDetailMovie.id)) : false}
         isDisliked={selectedDetailMovie ? store.disliked.some((m) => String(m.id) === String(selectedDetailMovie.id)) : false}
         isWatchlist={selectedDetailMovie ? store.watchlist.some((m) => String(m.id) === String(selectedDetailMovie.id)) : false}
+        isWatched={selectedDetailMovie ? store.watched.some((m) => String(m.id) === String(selectedDetailMovie.id)) : false}
       />
 
       {/* Interactive Taste Profiler Onboarding */}

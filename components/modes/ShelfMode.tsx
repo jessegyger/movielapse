@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Heart, Bookmark, Compass, Search, Flame, Award, TrendingUp, Loader2, Sparkles, ArrowUpDown, Calendar, X, Check, Disc, Ticket } from 'lucide-react';
+import { Heart, Bookmark, Compass, Search, Flame, Award, TrendingUp, Loader2, Sparkles, ArrowUpDown, Calendar, X, Check, Disc, Ticket, Eye } from 'lucide-react';
 import { Movie, ReleaseFormat } from '@/lib/tmdb/types';
 import { tmdb, GENRE_NAME_TO_ID } from '@/lib/tmdb/client';
 import { MovieCard } from '../movie/MovieCard';
@@ -12,9 +12,11 @@ interface ShelfModeProps {
   onLove: (movie: Movie) => void;
   onDislike: (movie: Movie) => void;
   onWatchlist: (movie: Movie) => void;
+  onWatched?: (movie: Movie) => void;
   lovedMovies: Movie[];
   dislikedMovies: Movie[];
   watchlistMovies: Movie[];
+  watchedMovies?: Movie[];
   allSeedMovies: Movie[];
   searchQuery?: string;
   onSearchChange?: (val: string) => void;
@@ -26,6 +28,7 @@ type SortOption = 'popularity.desc' | 'vote_average.desc' | 'primary_release_dat
 type YearOption = 'All' | '2020s' | '2010s' | '2000s' | '1990s' | '1980s' | '1970s' | 'classics';
 
 type TheatricalFilter = 'all' | 'hide_theatres' | 'theatres_only';
+type WatchedFilter = 'all' | 'hide_watched' | 'watched_only';
 
 export const ShelfMode: React.FC<ShelfModeProps> = ({
   onPlayTrailer,
@@ -33,9 +36,11 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
   onLove,
   onDislike,
   onWatchlist,
+  onWatched,
   lovedMovies,
   dislikedMovies,
   watchlistMovies,
+  watchedMovies = [],
   allSeedMovies,
   searchQuery: externalSearchQuery,
   onSearchChange,
@@ -43,6 +48,7 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('trending');
   const [theatricalFilter, setTheatricalFilter] = useState<TheatricalFilter>('all');
+  const [watchedFilter, setWatchedFilter] = useState<WatchedFilter>('all');
   const [searchQuery, setSearchQuery] = useState(externalSearchQuery || '');
   const [searchedQuery, setSearchedQuery] = useState(externalSearchQuery || '');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -86,17 +92,22 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
     }
   };
 
-  // Initialize theatrical filter from URL query params or localStorage
+  // Initialize theatrical & watched filters from URL query params or localStorage
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const path = window.location.pathname.toLowerCase();
       const search = window.location.search.toLowerCase();
-      const saved = localStorage.getItem('movielapse_theatre_filter');
+      const savedTheatre = localStorage.getItem('movielapse_theatre_filter');
+      const savedWatched = localStorage.getItem('movielapse_watched_filter');
 
       if (path.includes('/theatre') || path.includes('/theater') || search.includes('format=theatrical') || search.includes('theatres=only')) {
         setTheatricalFilter('theatres_only');
-      } else if (saved === 'hide_theatres' || saved === 'theatres_only') {
-        setTheatricalFilter(saved as TheatricalFilter);
+      } else if (savedTheatre === 'hide_theatres' || savedTheatre === 'theatres_only') {
+        setTheatricalFilter(savedTheatre as TheatricalFilter);
+      }
+
+      if (savedWatched === 'hide_watched' || savedWatched === 'watched_only') {
+        setWatchedFilter(savedWatched as WatchedFilter);
       }
     }
   }, []);
@@ -105,6 +116,13 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
     setTheatricalFilter(fmt);
     if (typeof window !== 'undefined') {
       localStorage.setItem('movielapse_theatre_filter', fmt);
+    }
+  };
+
+  const handleWatchedFilter = (filter: WatchedFilter) => {
+    setWatchedFilter(filter);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('movielapse_watched_filter', filter);
     }
   };
 
@@ -301,10 +319,17 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
     baseMovies = liveMovies;
   }
 
+  // Set of watched movie IDs for instant O(1) lookup
+  const watchedMovieIds = new Set(watchedMovies.map((m) => String(m.id)));
+
   // Client-side filtering & sorting for Curated, Loved, and Watchlist
   const filtered = baseMovies.filter((m) => {
     if (theatricalFilter === 'hide_theatres' && m.is_in_theatres) return false;
     if (theatricalFilter === 'theatres_only' && !m.is_in_theatres) return false;
+
+    const isWatched = watchedMovieIds.has(String(m.id));
+    if (watchedFilter === 'hide_watched' && isWatched) return false;
+    if (watchedFilter === 'watched_only' && !isWatched) return false;
 
     if (activeTab === 'curated' || activeTab === 'loved' || activeTab === 'watchlist') {
       const matchesQuery =
@@ -647,45 +672,90 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
           </div>
         </div>
 
-        {/* Super compact Theatres filter toggle (All / Off / Only) */}
-        <div className="flex items-center gap-1.5 text-xs">
-          <span className="text-neutral-400 font-semibold flex items-center gap-1 text-[11px]">
-            <Ticket className="w-3.5 h-3.5 text-red-400" /> Theatres:
-          </span>
-          <div className="flex items-center p-0.5 rounded-lg bg-neutral-950 border border-neutral-800">
-            <button
-              onClick={() => handleTheatricalFilter('all')}
-              title="All: Show both cinema and streaming releases"
-              className={`px-2.5 py-0.5 rounded text-[11px] font-semibold transition ${
-                theatricalFilter === 'all'
-                  ? 'bg-neutral-800 text-white shadow'
-                  : 'text-neutral-400 hover:text-white'
-              }`}
-            >
-              All
-            </button>
-            <button
-              onClick={() => handleTheatricalFilter('hide_theatres')}
-              title="Off: Hide cinema releases (Streaming & At-Home only)"
-              className={`px-2.5 py-0.5 rounded text-[11px] font-semibold transition ${
-                theatricalFilter === 'hide_theatres'
-                  ? 'bg-amber-500 text-neutral-950 font-bold shadow'
-                  : 'text-neutral-400 hover:text-white'
-              }`}
-            >
-              Off
-            </button>
-            <button
-              onClick={() => handleTheatricalFilter('theatres_only')}
-              title="Only: Show in-theatre movies only"
-              className={`px-2.5 py-0.5 rounded text-[11px] font-semibold transition ${
-                theatricalFilter === 'theatres_only'
-                  ? 'bg-red-600 text-white font-bold shadow'
-                  : 'text-neutral-400 hover:text-white'
-              }`}
-            >
-              Only
-            </button>
+        {/* Filter Controls: Theatres & Watched/Seen toggles */}
+        <div className="flex items-center gap-3 flex-wrap">
+          {/* Super compact Theatres filter toggle (All / Off / Only) */}
+          <div className="flex items-center gap-1.5 text-xs">
+            <span className="text-neutral-400 font-semibold flex items-center gap-1 text-[11px]">
+              <Ticket className="w-3.5 h-3.5 text-red-400" /> Theatres:
+            </span>
+            <div className="flex items-center p-0.5 rounded-lg bg-neutral-950 border border-neutral-800">
+              <button
+                onClick={() => handleTheatricalFilter('all')}
+                title="All: Show both cinema and streaming releases"
+                className={`px-2.5 py-0.5 rounded text-[11px] font-semibold transition ${
+                  theatricalFilter === 'all'
+                    ? 'bg-neutral-800 text-white shadow'
+                    : 'text-neutral-400 hover:text-white'
+                }`}
+              >
+                All
+              </button>
+              <button
+                onClick={() => handleTheatricalFilter('hide_theatres')}
+                title="Off: Hide cinema releases (Streaming & At-Home only)"
+                className={`px-2.5 py-0.5 rounded text-[11px] font-semibold transition ${
+                  theatricalFilter === 'hide_theatres'
+                    ? 'bg-amber-500 text-neutral-950 font-bold shadow'
+                    : 'text-neutral-400 hover:text-white'
+                }`}
+              >
+                Off
+              </button>
+              <button
+                onClick={() => handleTheatricalFilter('theatres_only')}
+                title="Only: Show in-theatre movies only"
+                className={`px-2.5 py-0.5 rounded text-[11px] font-semibold transition ${
+                  theatricalFilter === 'theatres_only'
+                    ? 'bg-red-600 text-white font-bold shadow'
+                    : 'text-neutral-400 hover:text-white'
+                }`}
+              >
+                Only
+              </button>
+            </div>
+          </div>
+
+          {/* Super compact Watched / Seen filter toggle (All / Hide / Only) */}
+          <div className="flex items-center gap-1.5 text-xs">
+            <span className="text-neutral-400 font-semibold flex items-center gap-1 text-[11px]">
+              <Eye className="w-3.5 h-3.5 text-emerald-400" /> Seen:
+            </span>
+            <div className="flex items-center p-0.5 rounded-lg bg-neutral-950 border border-neutral-800">
+              <button
+                onClick={() => handleWatchedFilter('all')}
+                title="All: Show both seen and unseen movies"
+                className={`px-2.5 py-0.5 rounded text-[11px] font-semibold transition ${
+                  watchedFilter === 'all'
+                    ? 'bg-neutral-800 text-white shadow'
+                    : 'text-neutral-400 hover:text-white'
+                }`}
+              >
+                All
+              </button>
+              <button
+                onClick={() => handleWatchedFilter('hide_watched')}
+                title="Hide: Hide movies you have already seen"
+                className={`px-2.5 py-0.5 rounded text-[11px] font-semibold transition ${
+                  watchedFilter === 'hide_watched'
+                    ? 'bg-amber-500 text-neutral-950 font-bold shadow'
+                    : 'text-neutral-400 hover:text-white'
+                }`}
+              >
+                Hide
+              </button>
+              <button
+                onClick={() => handleWatchedFilter('watched_only')}
+                title="Only: Show only movies you have seen"
+                className={`px-2.5 py-0.5 rounded text-[11px] font-semibold transition ${
+                  watchedFilter === 'watched_only'
+                    ? 'bg-emerald-600 text-white font-bold shadow'
+                    : 'text-neutral-400 hover:text-white'
+                }`}
+              >
+                Only
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -725,9 +795,11 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
                 onLove={onLove}
                 onDislike={onDislike}
                 onWatchlist={onWatchlist}
+                onWatched={onWatched}
                 isLoved={lovedMovies.some((m) => String(m.id) === String(movie.id))}
                 isDisliked={dislikedMovies.some((m) => String(m.id) === String(movie.id))}
                 isWatchlist={watchlistMovies.some((m) => String(m.id) === String(movie.id))}
+                isWatched={watchedMovieIds.has(String(movie.id))}
               />
             ))}
           </div>

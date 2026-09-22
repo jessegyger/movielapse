@@ -27,9 +27,11 @@ interface TwentyQuestionsModeProps {
   onLove: (movie: Movie) => void;
   onDislike: (movie: Movie) => void;
   onWatchlist: (movie: Movie) => void;
+  onWatched?: (movie: Movie) => void;
   lovedMovies: Movie[];
   dislikedMovies: Movie[];
   watchlistMovies: Movie[];
+  watchedMovies?: Movie[];
   tasteSummaryPrompt: string;
 }
 
@@ -212,9 +214,11 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
   onLove,
   onDislike,
   onWatchlist,
+  onWatched,
   lovedMovies,
   dislikedMovies,
   watchlistMovies,
+  watchedMovies = [],
   tasteSummaryPrompt,
 }) => {
   // 6 Questions (Quick Pick) default, 12 Questions (Deep) optional
@@ -446,7 +450,8 @@ Recommend the top 3 tailored movie picks. For each pick, give the exact title, r
                 return (
                   <div
                     key={movie.id}
-                    className="group relative bg-neutral-900/90 border border-neutral-800/90 hover:border-amber-500/50 rounded-2xl p-3 flex flex-col justify-between shadow-xl transition-all"
+                    onClick={() => onSelectMovie ? onSelectMovie(movie) : onPlayTrailer(movie)}
+                    className="group relative bg-neutral-900/90 border border-neutral-800/90 hover:border-amber-400/80 hover:bg-neutral-850/90 rounded-2xl p-3 flex flex-col justify-between shadow-xl transition-all duration-200 hover:shadow-2xl hover:shadow-amber-500/10 cursor-pointer"
                   >
                     <div className="flex gap-3">
                       {/* Compact Poster */}
@@ -464,7 +469,11 @@ Recommend the top 3 tailored movie picks. For each pick, give the exact title, r
                           <div className="w-full h-full flex items-center justify-center text-xl">🎬</div>
                         )}
                         <button
-                          onClick={() => onPlayTrailer(movie)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onPlayTrailer(movie);
+                          }}
+                          aria-label={`Watch ${movie.title} trailer`}
                           className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                         >
                           <span className="p-2 bg-amber-500 text-black rounded-full shadow-lg">
@@ -487,9 +496,8 @@ Recommend the top 3 tailored movie picks. For each pick, give the exact title, r
                           </div>
 
                           <h3
-                            onClick={() => onSelectMovie ? onSelectMovie(movie) : onPlayTrailer(movie)}
                             title={`View details for ${movie.title}`}
-                            className="text-sm font-bold text-white leading-tight truncate group-hover:text-amber-400 transition-colors cursor-pointer hover:underline"
+                            className="text-sm font-bold text-white leading-tight truncate group-hover:text-amber-400 transition-colors text-left"
                           >
                             {movie.title}
                           </h3>
@@ -521,18 +529,39 @@ Recommend the top 3 tailored movie picks. For each pick, give the exact title, r
                         </div>
 
                         {/* Action buttons */}
-                        <div className="mt-2 pt-2 border-t border-neutral-800/80 flex items-center justify-between">
-                          <button
-                            onClick={() => onPlayTrailer(movie)}
-                            className="text-xs font-semibold text-amber-400 hover:text-amber-300 flex items-center gap-1 transition"
-                          >
-                            <Play className="w-3.5 h-3.5 fill-current" /> Watch Trailer
-                          </button>
+                        <div
+                          onClick={(e) => e.stopPropagation()}
+                          className="mt-2 pt-2 border-t border-neutral-800/80 flex items-center justify-between"
+                        >
+                          {onWatched ? (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onWatched(movie);
+                              }}
+                              title={watchedMovies.some((m) => String(m.id) === String(movie.id)) ? "Seen (click to unmark)" : "Mark as seen"}
+                              className={`text-[11px] font-semibold flex items-center gap-1 px-2 py-0.5 rounded-md transition-all active:scale-95 ${
+                                watchedMovies.some((m) => String(m.id) === String(movie.id))
+                                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                                  : 'bg-neutral-800/80 text-neutral-400 hover:text-white border border-neutral-700/60'
+                              }`}
+                            >
+                              <Check className="w-3 h-3 stroke-[2.5]" />
+                              <span>{watchedMovies.some((m) => String(m.id) === String(movie.id)) ? 'Seen' : 'Seen it'}</span>
+                            </button>
+                          ) : (
+                            <div />
+                          )}
                           <div className="flex items-center gap-1">
                             <button
-                              onClick={() => onLove(movie)}
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onLove(movie);
+                              }}
                               title="Love"
-                              className={`p-1.5 rounded-lg transition ${
+                              className={`p-1.5 rounded-lg transition active:scale-95 ${
                                 lovedMovies.some((m) => String(m.id) === String(movie.id))
                                   ? 'text-red-500 bg-red-500/10'
                                   : 'text-neutral-400 hover:text-white'
@@ -541,9 +570,13 @@ Recommend the top 3 tailored movie picks. For each pick, give the exact title, r
                               <Heart className="w-3.5 h-3.5 fill-current" />
                             </button>
                             <button
-                              onClick={() => onWatchlist(movie)}
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onWatchlist(movie);
+                              }}
                               title="Watchlist"
-                              className={`p-1.5 rounded-lg transition ${
+                              className={`p-1.5 rounded-lg transition active:scale-95 ${
                                 watchlistMovies.some((m) => String(m.id) === String(movie.id))
                                   ? 'text-amber-400 bg-amber-500/10'
                                   : 'text-neutral-400 hover:text-white'
@@ -805,7 +838,8 @@ Recommend the top 3 tailored movie picks. For each pick, give the exact title, r
               return (
                 <div
                   key={movie.id}
-                  className="group relative bg-neutral-950/80 border border-neutral-800/90 hover:border-amber-500/50 rounded-xl p-2.5 flex flex-col justify-between shadow-lg transition-all duration-200"
+                  onClick={() => onSelectMovie ? onSelectMovie(movie) : onPlayTrailer(movie)}
+                  className="group relative bg-neutral-950/80 border border-neutral-800/90 hover:border-amber-400/80 hover:bg-neutral-900/90 rounded-xl p-2.5 flex flex-col justify-between shadow-lg transition-all duration-200 hover:shadow-xl hover:shadow-amber-500/10 cursor-pointer"
                 >
                   <div className="flex gap-2.5">
                     {/* Poster Thumbnail */}
@@ -823,7 +857,10 @@ Recommend the top 3 tailored movie picks. For each pick, give the exact title, r
                         <div className="w-full h-full flex items-center justify-center text-lg">🎬</div>
                       )}
                       <button
-                        onClick={() => onPlayTrailer(movie)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onPlayTrailer(movie);
+                        }}
                         aria-label={`Play trailer for ${movie.title}`}
                         className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                       >
@@ -845,9 +882,8 @@ Recommend the top 3 tailored movie picks. For each pick, give the exact title, r
                         </div>
 
                         <h4
-                          onClick={() => onSelectMovie ? onSelectMovie(movie) : onPlayTrailer(movie)}
                           title={`View details for ${movie.title}`}
-                          className="text-xs sm:text-sm font-bold text-white truncate group-hover:text-amber-400 transition-colors cursor-pointer hover:underline"
+                          className="text-xs sm:text-sm font-bold text-white truncate group-hover:text-amber-400 transition-colors text-left"
                         >
                           {movie.title}
                         </h4>
@@ -890,19 +926,40 @@ Recommend the top 3 tailored movie picks. For each pick, give the exact title, r
                       </div>
 
                       {/* Quick Card Action Buttons */}
-                      <div className="mt-2 pt-1.5 border-t border-neutral-800/80 flex items-center justify-between">
-                        <button
-                          onClick={() => onPlayTrailer(movie)}
-                          className="text-[11px] font-semibold text-amber-400 hover:text-amber-300 flex items-center gap-1 transition"
-                        >
-                          <Play className="w-3 h-3 fill-current" /> Trailer
-                        </button>
+                      <div
+                        onClick={(e) => e.stopPropagation()}
+                        className="mt-2 pt-1.5 border-t border-neutral-800/80 flex items-center justify-between"
+                      >
+                        {onWatched ? (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onWatched(movie);
+                            }}
+                            title={watchedMovies.some((m) => String(m.id) === String(movie.id)) ? "Seen (click to unmark)" : "Mark as seen"}
+                            className={`text-[10px] font-semibold flex items-center gap-1 px-1.5 py-0.5 rounded transition-all active:scale-95 ${
+                              watchedMovies.some((m) => String(m.id) === String(movie.id))
+                                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                                : 'bg-neutral-800 text-neutral-400 hover:text-white border border-neutral-700/60'
+                            }`}
+                          >
+                            <Check className="w-2.5 h-2.5 stroke-[2.5]" />
+                            <span>{watchedMovies.some((m) => String(m.id) === String(movie.id)) ? 'Seen' : 'Seen it'}</span>
+                          </button>
+                        ) : (
+                          <div />
+                        )}
 
                         <div className="flex items-center gap-1">
                           <button
-                            onClick={() => onLove(movie)}
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onLove(movie);
+                            }}
                             title="Love this movie"
-                            className={`p-1 rounded-md transition ${
+                            className={`p-1 rounded-md transition active:scale-95 ${
                               lovedMovies.some((m) => String(m.id) === String(movie.id))
                                 ? 'text-red-500 bg-red-500/10'
                                 : 'text-neutral-400 hover:text-white'
@@ -911,9 +968,13 @@ Recommend the top 3 tailored movie picks. For each pick, give the exact title, r
                             <Heart className="w-3 h-3 fill-current" />
                           </button>
                           <button
-                            onClick={() => onWatchlist(movie)}
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onWatchlist(movie);
+                            }}
                             title="Add to Watchlist"
-                            className={`p-1 rounded-md transition ${
+                            className={`p-1 rounded-md transition active:scale-95 ${
                               watchlistMovies.some((m) => String(m.id) === String(movie.id))
                                 ? 'text-amber-400 bg-amber-500/10'
                                 : 'text-neutral-400 hover:text-white'

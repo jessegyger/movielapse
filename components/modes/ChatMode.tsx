@@ -12,9 +12,11 @@ interface ChatModeProps {
   onLove: (movie: Movie) => void;
   onDislike: (movie: Movie) => void;
   onWatchlist: (movie: Movie) => void;
+  onWatched?: (movie: Movie) => void;
   lovedMovies: Movie[];
   dislikedMovies: Movie[];
   watchlistMovies: Movie[];
+  watchedMovies?: Movie[];
   tasteSummaryPrompt: string;
 }
 
@@ -32,9 +34,11 @@ export const ChatMode: React.FC<ChatModeProps> = ({
   onLove,
   onDislike,
   onWatchlist,
+  onWatched,
   lovedMovies,
   dislikedMovies,
   watchlistMovies,
+  watchedMovies = [],
   tasteSummaryPrompt,
 }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([
@@ -193,9 +197,11 @@ export const ChatMode: React.FC<ChatModeProps> = ({
                       onLove={onLove}
                       onDislike={onDislike}
                       onWatchlist={onWatchlist}
+                      onWatched={onWatched}
                       isLoved={lovedMovies.some((m) => String(m.id) === String(movie.id))}
                       isDisliked={dislikedMovies.some((m) => String(m.id) === String(movie.id))}
                       isWatchlist={watchlistMovies.some((m) => String(m.id) === String(movie.id))}
+                      isWatched={watchedMovies.some((m) => String(m.id) === String(movie.id))}
                       compact={true}
                     />
                   ))}

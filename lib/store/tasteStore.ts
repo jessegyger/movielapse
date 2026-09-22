@@ -113,6 +113,20 @@ export function useTasteStore() {
     });
   };
 
+  const toggleWatched = (movie: Movie) => {
+    const isAlreadyWatched = state.watched.some((m) => String(m.id) === String(movie.id));
+    if (isAlreadyWatched) {
+      persist({
+        watched: state.watched.filter((m) => String(m.id) !== String(movie.id)),
+        loved: state.loved.filter((m) => String(m.id) !== String(movie.id)),
+        okay: state.okay.filter((m) => String(m.id) !== String(movie.id)),
+        disliked: state.disliked.filter((m) => String(m.id) !== String(movie.id)),
+      });
+    } else {
+      markWatched(movie);
+    }
+  };
+
   const markLoved = (movie: Movie) => {
     const withoutMovie = (list: Movie[]) => list.filter((m) => String(m.id) !== String(movie.id));
     persist({
@@ -241,6 +255,7 @@ export function useTasteStore() {
   return {
     ...state,
     markWatched,
+    toggleWatched,
     markLoved,
     markOkay,
     markDisliked,

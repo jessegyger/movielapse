@@ -2,7 +2,7 @@
 
 import React, { useEffect } from 'react';
 import Image from 'next/image';
-import { X, Play, Heart, Bookmark, ThumbsDown, Tv, Ticket, ExternalLink, Calendar, Clock, Award, Users } from 'lucide-react';
+import { X, Play, Heart, Bookmark, ThumbsDown, Tv, Ticket, ExternalLink, Calendar, Clock, Award, Users, Check } from 'lucide-react';
 import { Movie } from '@/lib/tmdb/types';
 
 interface MovieDetailModalProps {
@@ -13,9 +13,11 @@ interface MovieDetailModalProps {
   onLove?: (movie: Movie) => void;
   onDislike?: (movie: Movie) => void;
   onWatchlist?: (movie: Movie) => void;
+  onWatched?: (movie: Movie) => void;
   isLoved?: boolean;
   isDisliked?: boolean;
   isWatchlist?: boolean;
+  isWatched?: boolean;
 }
 
 export const MovieDetailModal: React.FC<MovieDetailModalProps> = ({
@@ -26,9 +28,11 @@ export const MovieDetailModal: React.FC<MovieDetailModalProps> = ({
   onLove,
   onDislike,
   onWatchlist,
+  onWatched,
   isLoved = false,
   isDisliked = false,
   isWatchlist = false,
+  isWatched = false,
 }) => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -194,6 +198,19 @@ export const MovieDetailModal: React.FC<MovieDetailModalProps> = ({
           {/* Quick Action Bar (Love, Dislike, Watchlist) */}
           <div className="flex items-center gap-2 p-3 bg-neutral-950/70 border border-neutral-800/80 rounded-xl">
             <span className="text-xs text-neutral-400 font-medium mr-auto">Your Taste:</span>
+            {onWatched && (
+              <button
+                onClick={() => onWatched(movie)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                  isWatched
+                    ? 'bg-emerald-500/20 border border-emerald-500/50 text-emerald-400'
+                    : 'bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-emerald-400 hover:bg-neutral-800'
+                }`}
+              >
+                <Check className={`w-3.5 h-3.5 ${isWatched ? 'stroke-[2.5]' : ''}`} />
+                <span>{isWatched ? 'Seen' : 'Seen it'}</span>
+              </button>
+            )}
             {onLove && (
               <button
                 onClick={() => onLove(movie)}

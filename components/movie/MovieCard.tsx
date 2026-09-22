@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import Image from 'next/image';
-import { Play, Heart, ThumbsDown, Bookmark, Sparkles, Tv, Ticket, Info } from 'lucide-react';
+import { Play, Heart, ThumbsDown, Bookmark, Sparkles, Tv, Ticket, Info, Check } from 'lucide-react';
 import { Movie } from '@/lib/tmdb/types';
 
 interface MovieCardProps {
@@ -12,9 +12,11 @@ interface MovieCardProps {
   onLove?: (movie: Movie) => void;
   onDislike?: (movie: Movie) => void;
   onWatchlist?: (movie: Movie) => void;
+  onWatched?: (movie: Movie) => void;
   isLoved?: boolean;
   isDisliked?: boolean;
   isWatchlist?: boolean;
+  isWatched?: boolean;
   compact?: boolean;
 }
 
@@ -25,9 +27,11 @@ export const MovieCard: React.FC<MovieCardProps> = ({
   onLove,
   onDislike,
   onWatchlist,
+  onWatched,
   isLoved = false,
   isDisliked = false,
   isWatchlist = false,
+  isWatched = false,
   compact = false,
 }) => {
   const [imageError, setImageError] = useState(false);
@@ -132,7 +136,10 @@ export const MovieCard: React.FC<MovieCardProps> = ({
   };
 
   return (
-    <div className="group relative bg-neutral-900/90 border border-neutral-800/80 hover:border-amber-500/50 rounded-xl overflow-hidden shadow-lg transition-all duration-300 hover:shadow-2xl hover:shadow-amber-500/10 flex flex-col">
+    <div
+      onClick={() => onSelectMovie ? onSelectMovie(movie) : onPlayTrailer(movie)}
+      className="group relative bg-neutral-900/90 border border-neutral-800/80 hover:border-amber-400/80 hover:bg-neutral-850/95 rounded-xl overflow-hidden shadow-lg transition-all duration-200 hover:shadow-2xl hover:shadow-amber-500/15 flex flex-col cursor-pointer"
+    >
       {/* Poster Media */}
       <div className="relative aspect-[2/3] w-full overflow-hidden bg-neutral-950">
         {!imageError && movie.poster_path ? (
@@ -166,7 +173,10 @@ export const MovieCard: React.FC<MovieCardProps> = ({
 
         {/* Quick trailer play overlay on hover/tap */}
         <button
-          onClick={() => onPlayTrailer(movie)}
+          onClick={(e) => {
+            e.stopPropagation();
+            onPlayTrailer(movie);
+          }}
           aria-label={`Watch ${movie.title} trailer`}
           className="absolute inset-0 bg-black/40 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center gap-2 text-white font-medium text-sm"
         >
@@ -176,7 +186,7 @@ export const MovieCard: React.FC<MovieCardProps> = ({
         </button>
       </div>
 
-      {/* Card Body */}
+      {/* Card Body (Clicking anywhere here opens the movie detail page) */}
       <div className="p-4 flex-1 flex flex-col justify-between">
         <div>
           {/* AI Match Reason pill if present */}
@@ -188,9 +198,8 @@ export const MovieCard: React.FC<MovieCardProps> = ({
           )}
 
           <h4
-            onClick={() => onSelectMovie ? onSelectMovie(movie) : onPlayTrailer(movie)}
             title={`View details for ${movie.title}`}
-            className="font-semibold text-white text-base leading-snug line-clamp-1 group-hover:text-amber-400 transition-colors cursor-pointer hover:underline underline-offset-2 text-left"
+            className="font-semibold text-white text-base leading-snug line-clamp-1 group-hover:text-amber-400 transition-colors text-left"
           >
             {movie.title}
           </h4>
@@ -283,20 +292,41 @@ export const MovieCard: React.FC<MovieCardProps> = ({
         </div>
 
         {/* Action Buttons Footer */}
-        <div className="mt-4 pt-3 border-t border-neutral-800/80 flex items-center justify-between">
-          <button
-            onClick={() => onPlayTrailer(movie)}
-            className="text-xs font-semibold text-amber-400 hover:text-amber-300 flex items-center gap-1 transition"
-          >
-            <Play className="w-3.5 h-3.5 fill-current" /> Trailer
-          </button>
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="mt-4 pt-3 border-t border-neutral-800/80 flex items-center justify-between"
+        >
+          {onWatched ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onWatched(movie);
+              }}
+              title={isWatched ? "Marked as seen - click to unmark" : "I've seen this movie"}
+              className={`text-xs font-semibold flex items-center gap-1.5 px-2.5 py-1 rounded-lg transition-all active:scale-95 ${
+                isWatched
+                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shadow-sm'
+                  : 'bg-neutral-800/80 text-neutral-400 hover:text-white hover:bg-neutral-750 border border-neutral-700/60'
+              }`}
+            >
+              <Check className={`w-3.5 h-3.5 stroke-[2.5] ${isWatched ? 'text-emerald-400' : 'text-neutral-400'}`} />
+              <span>{isWatched ? 'Seen' : 'Seen it'}</span>
+            </button>
+          ) : (
+            <div />
+          )}
 
           <div className="flex items-center gap-1">
             {onLove && (
               <button
-                onClick={() => onLove(movie)}
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onLove(movie);
+                }}
                 title={isLoved ? "Loved" : "Mark as loved"}
-                className={`p-1.5 rounded-lg transition ${
+                className={`p-1.5 rounded-lg transition active:scale-95 ${
                   isLoved
                     ? 'text-red-400 bg-red-500/20'
                     : 'text-neutral-400 hover:text-red-400 hover:bg-neutral-800'
@@ -308,9 +338,13 @@ export const MovieCard: React.FC<MovieCardProps> = ({
 
             {onDislike && (
               <button
-                onClick={() => onDislike(movie)}
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDislike(movie);
+                }}
                 title={isDisliked ? "Disliked" : "Mark as disliked"}
-                className={`p-1.5 rounded-lg transition ${
+                className={`p-1.5 rounded-lg transition active:scale-95 ${
                   isDisliked
                     ? 'text-neutral-200 bg-neutral-700'
                     : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800'
@@ -322,9 +356,13 @@ export const MovieCard: React.FC<MovieCardProps> = ({
 
             {onWatchlist && (
               <button
-                onClick={() => onWatchlist(movie)}
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onWatchlist(movie);
+                }}
                 title={isWatchlist ? "In Watchlist" : "Save to Watchlist"}
-                className={`p-1.5 rounded-lg transition ${
+                className={`p-1.5 rounded-lg transition active:scale-95 ${
                   isWatchlist
                     ? 'text-amber-400 bg-amber-500/20'
                     : 'text-neutral-400 hover:text-amber-400 hover:bg-neutral-800'
