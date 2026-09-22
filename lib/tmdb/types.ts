@@ -22,6 +22,7 @@ export interface StreamingProvider {
   name: string;
   logo_path?: string;
   type: 'stream' | 'rent' | 'buy';
+  watch_url?: string;
 }
 
 export interface TasteProfile {

@@ -90,14 +90,16 @@ export class TMDbClient {
     genreId?: number;
     yearGte?: string;
     yearLte?: string;
+    watchProviderId?: number;
+    watchRegion?: string;
   } = {}): Promise<{ results: Movie[]; totalPages: number }> {
     const page = options.page || 1;
     let url = `${TMDB_BASE_URL}/discover/movie?api_key=${this.apiKey}&page=${page}&include_adult=false`;
 
     if (options.sortBy) {
       url += `&sort_by=${options.sortBy}`;
-      if (options.sortBy.includes('vote_average')) {
-        url += `&vote_count.gte=150`;
+      if (options.sortBy.includes('vote_average') || options.sortBy.includes('vote_count')) {
+        url += `&vote_count.gte=100`;
       }
     } else {
       url += `&sort_by=popularity.desc`;
@@ -114,6 +116,11 @@ export class TMDbClient {
       url += `&primary_release_date.lte=${options.yearLte}`;
     }
 
+    if (options.watchProviderId) {
+      const reg = options.watchRegion || this.getUserCountry() || 'US';
+      url += `&with_watch_providers=${options.watchProviderId}&watch_region=${reg}`;
+    }
+
     try {
       const res = await fetch(url);
       if (res.ok) {
@@ -128,6 +135,15 @@ export class TMDbClient {
     }
 
     return { results: SEED_MOVIES.slice(0, 20), totalPages: 1 };
+  }
+
+  // Get movies actively streaming on Netflix in the user's region
+  async getNetflixMovies(page: number = 1): Promise<{ results: Movie[]; totalPages: number }> {
+    return this.discoverMovies({
+      page,
+      watchProviderId: 8,
+      sortBy: 'vote_count.desc',
+    });
   }
 
   // Get trending movies for the week (paginated for thousands of movies)
@@ -497,8 +513,26 @@ export class TMDbClient {
     return undefined;
   }
 
+  // Build deep link directly to the movie on the platform or TMDb watch page
+  getWatchUrl(providerName: string, movieTitle: string, tmdbWatchUrl?: string): string {
+    const q = encodeURIComponent(movieTitle);
+    const norm = providerName.toLowerCase();
+    if (norm.includes('netflix')) return `https://www.netflix.com/search?q=${q}`;
+    if (norm.includes('prime') || norm.includes('amazon')) return `https://www.amazon.com/s?k=${q}&i=instant-video`;
+    if (norm.includes('disney')) return `https://www.disneyplus.com/search?q=${q}`;
+    if (norm.includes('max') || norm.includes('hbo')) return `https://play.max.com/search?q=${q}`;
+    if (norm.includes('hulu')) return `https://www.hulu.com/search?q=${q}`;
+    if (norm.includes('apple')) return `https://tv.apple.com/search?term=${q}`;
+    if (norm.includes('paramount')) return `https://www.paramountplus.com/search/?q=${q}`;
+    if (norm.includes('peacock')) return `https://www.peacocktv.com/watch/search?q=${q}`;
+    if (norm.includes('youtube')) return `https://www.youtube.com/results?search_query=${q}+movie`;
+    if (norm.includes('tubi')) return `https://tubitv.com/search/${q}`;
+    if (norm.includes('pluto')) return `https://pluto.tv/search/details/movies/${q}`;
+    return tmdbWatchUrl || `https://www.google.com/search?q=watch+${q}+online`;
+  }
+
   // Fetch verified streaming providers (Netflix, Prime, Disney+, Max, Hulu, etc.) by region
-  async getWatchProviders(movieId: number | string, region?: string): Promise<StreamingProvider[]> {
+  async getWatchProviders(movieId: number | string, movieTitle?: string, region?: string): Promise<StreamingProvider[]> {
     const numId = Number(movieId);
     if (isNaN(numId) || numId <= 0) return [];
 
@@ -516,6 +550,7 @@ export class TMDbClient {
 
         const providers: StreamingProvider[] = [];
         const seen = new Set<string>();
+        const titleForLink = movieTitle || '';
 
         const addProviders = (list: any[], type: 'stream' | 'rent' | 'buy') => {
           if (!list || !Array.isArray(list)) return;
@@ -526,7 +561,8 @@ export class TMDbClient {
               providers.push({
                 name: cleanName,
                 logo_path: p.logo_path ? `${TMDB_IMG_BASE}${p.logo_path}` : this.getProviderLogo(cleanName),
-                type
+                type,
+                watch_url: this.getWatchUrl(cleanName, titleForLink, regData.link)
               });
             }
           }
@@ -542,7 +578,7 @@ export class TMDbClient {
           addProviders(regData.buy, 'buy');
         }
 
-        const topProviders = providers.slice(0, 3);
+        const topProviders = providers.slice(0, 4);
         this.providersCache.set(numId, topProviders);
         return topProviders;
       }
@@ -559,25 +595,27 @@ export class TMDbClient {
     const toProcess = movies.slice(0, maxCount);
     const enrichedSlice = await Promise.all(
       toProcess.map(async (movie) => {
-        // If movie already has concrete providers with logos, ensure logos are filled
+        const numId = Number(movie.id);
+        // Try live TMDb providers with movie title for deep search URLs
+        if (!isNaN(numId) && numId > 0) {
+          const providers = await this.getWatchProviders(numId, movie.title);
+          if (providers && providers.length > 0) {
+            return { ...movie, streaming_providers: providers };
+          }
+        }
+
+        // If movie already has concrete providers, ensure logos and watch URLs are attached
         if (movie.streaming_providers && movie.streaming_providers.length > 0 && movie.streaming_providers[0].name !== 'Available Online') {
           const filled = movie.streaming_providers.map(sp => {
             const clean = this.cleanProviderName(sp.name);
             return {
               ...sp,
               name: clean,
-              logo_path: sp.logo_path || this.getProviderLogo(clean)
+              logo_path: sp.logo_path || this.getProviderLogo(clean),
+              watch_url: sp.watch_url || this.getWatchUrl(clean, movie.title)
             };
           });
           return { ...movie, streaming_providers: filled };
-        }
-
-        const numId = Number(movie.id);
-        if (!isNaN(numId) && numId > 0) {
-          const providers = await this.getWatchProviders(numId);
-          if (providers && providers.length > 0) {
-            return { ...movie, streaming_providers: providers };
-          }
         }
 
         // Check seed catalog for fallback providers
@@ -588,7 +626,8 @@ export class TMDbClient {
             return {
               ...sp,
               name: clean,
-              logo_path: sp.logo_path || this.getProviderLogo(clean)
+              logo_path: sp.logo_path || this.getProviderLogo(clean),
+              watch_url: sp.watch_url || this.getWatchUrl(clean, movie.title)
             };
           });
           return { ...movie, streaming_providers: filled };
@@ -611,7 +650,7 @@ export class TMDbClient {
         const [movieRes, videosRes, providers] = await Promise.all([
           fetch(`${TMDB_BASE_URL}/movie/${numericId}?api_key=${this.apiKey}`),
           fetch(`${TMDB_BASE_URL}/movie/${numericId}/videos?api_key=${this.apiKey}`),
-          this.getWatchProviders(numericId)
+          this.getWatchProviders(numericId, local?.title)
         ]);
 
         if (movieRes.ok) {
@@ -630,6 +669,17 @@ export class TMDbClient {
             ? m.genres.map((g: any) => g.name)
             : (m.genre_ids ? m.genre_ids.map((id: number) => TMDB_GENRE_MAP[id]).filter(Boolean) : ['Cinema']);
 
+          const rawProviders = providers.length > 0 ? providers : (local?.streaming_providers || []);
+          const finalProviders = rawProviders.map(p => {
+            const clean = this.cleanProviderName(p.name);
+            return {
+              ...p,
+              name: clean,
+              logo_path: p.logo_path || this.getProviderLogo(clean),
+              watch_url: p.watch_url || this.getWatchUrl(clean, m.title)
+            };
+          });
+
           return {
             id: m.id,
             title: m.title,
@@ -646,7 +696,7 @@ export class TMDbClient {
             trailer_key: trailer_key || local?.trailer_key,
             director: local?.director,
             cast: local?.cast,
-            streaming_providers: providers.length > 0 ? providers : (local?.streaming_providers || undefined)
+            streaming_providers: finalProviders.length > 0 ? finalProviders : undefined
           };
         }
       } catch (err) {

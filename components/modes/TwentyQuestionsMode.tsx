@@ -490,14 +490,21 @@ Recommend the top 3 tailored movie picks. For each pick, give the exact title, r
 
                           {/* Streaming Badge */}
                           {pStyle && streamP && streamP.name !== 'Available Online' && (
-                            <div className={`mt-2 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border text-[11px] font-bold shadow-sm backdrop-blur-md ${pStyle.bg}`}>
+                            <a
+                              href={streamP.watch_url || `https://www.google.com/search?q=watch+${encodeURIComponent(movie.title)}+${encodeURIComponent(pStyle.text)}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              title={`Watch "${movie.title}" on ${pStyle.text}`}
+                              className={`mt-2 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border text-[11px] font-bold shadow-sm backdrop-blur-md transition-all transform hover:scale-105 active:scale-95 ${pStyle.bg}`}
+                            >
                               {pStyle.logo ? (
                                 <img src={pStyle.logo} alt="" className="w-3.5 h-3.5 rounded object-contain shrink-0" />
                               ) : (
                                 <Tv className="w-3 h-3 text-amber-400" />
                               )}
-                              <span>Watch on {pStyle.text}</span>
-                            </div>
+                              <span>Watch on {pStyle.text} ↗</span>
+                            </a>
                           )}
 
                           {movie.ai_match_reason && (
@@ -837,19 +844,32 @@ Recommend the top 3 tailored movie picks. For each pick, give the exact title, r
 
                         {/* High-visibility Streaming Badge */}
                         {pStyle && streamP && streamP.name !== 'Available Online' ? (
-                          <div className={`mt-1.5 inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-bold shadow-sm ${pStyle.bg}`}>
+                          <a
+                            href={streamP.watch_url || `https://www.google.com/search?q=watch+${encodeURIComponent(movie.title)}+${encodeURIComponent(pStyle.text)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            title={`Watch "${movie.title}" on ${pStyle.text}`}
+                            className={`mt-1.5 inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-bold shadow-sm hover:scale-105 transition ${pStyle.bg}`}
+                          >
                             {pStyle.logo ? (
                               <img src={pStyle.logo} alt="" className="w-3 h-3 rounded object-contain shrink-0" />
                             ) : (
                               <Tv className="w-2.5 h-2.5" />
                             )}
-                            <span className="truncate max-w-[95px]">{pStyle.text}</span>
-                          </div>
+                            <span className="truncate max-w-[85px]">{pStyle.text}</span>
+                          </a>
                         ) : (
-                          <div className="mt-1.5 inline-flex items-center gap-1 text-[10px] text-neutral-400 bg-neutral-900 py-0.5 px-1.5 rounded border border-neutral-800">
+                          <a
+                            href={`https://www.google.com/search?q=watch+${encodeURIComponent(movie.title)}+online`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="mt-1.5 inline-flex items-center gap-1 text-[10px] text-neutral-400 hover:text-amber-400 bg-neutral-900 py-0.5 px-1.5 rounded border border-neutral-800 transition"
+                          >
                             <Tv className="w-2.5 h-2.5 text-amber-400 shrink-0" />
-                            <span className="truncate">Stream online</span>
-                          </div>
+                            <span className="truncate">Stream online ↗</span>
+                          </a>
                         )}
 
                         {movie.ai_match_reason && (

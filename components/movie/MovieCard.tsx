@@ -129,11 +129,6 @@ export const MovieCard: React.FC<MovieCardProps> = ({
     };
   };
 
-  const topStreamProvider = movie.streaming_providers?.find(p => p.type === 'stream') || movie.streaming_providers?.[0];
-  const topProviderConfig = topStreamProvider && topStreamProvider.name !== 'Available Online'
-    ? getStreamingBadgeConfig(topStreamProvider.name)
-    : null;
-
   return (
     <div className="group relative bg-neutral-900/90 border border-neutral-800/80 hover:border-amber-500/50 rounded-xl overflow-hidden shadow-lg transition-all duration-300 hover:shadow-2xl hover:shadow-amber-500/10 flex flex-col">
       {/* Poster Media */}
@@ -166,20 +161,6 @@ export const MovieCard: React.FC<MovieCardProps> = ({
             </span>
           )}
         </div>
-
-        {/* Top Right High-Visibility Streaming Badge */}
-        {topProviderConfig && (
-          <div className="absolute top-2 right-2 z-10 flex items-center gap-1 px-2 py-0.5 rounded-md shadow-md backdrop-blur-md border text-[11px] font-bold tracking-tight animate-fade-in bg-black/80 border-neutral-700">
-            {topStreamProvider?.logo_path || topProviderConfig.icon ? (
-              <img
-                src={topStreamProvider?.logo_path || topProviderConfig.icon}
-                alt=""
-                className="w-3.5 h-3.5 rounded object-contain shrink-0"
-              />
-            ) : null}
-            <span className="text-white">{topProviderConfig.label}</span>
-          </div>
-        )}
 
         {/* Quick trailer play overlay on hover/tap */}
         <button
@@ -226,37 +207,59 @@ export const MovieCard: React.FC<MovieCardProps> = ({
             </p>
           )}
 
-          {/* Streaming Platforms Visible Row */}
+          {/* Streaming Platforms Visible Row (Icon Only + Direct Clickable Links) */}
           {movie.streaming_providers && movie.streaming_providers.length > 0 && movie.streaming_providers[0].name !== 'Available Online' ? (
-            <div className="mt-3 flex flex-wrap items-center gap-1.5">
+            <div className="mt-3 flex items-center gap-1.5 flex-wrap">
               <span className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400 mr-0.5 flex items-center gap-1">
-                <Tv className="w-3 h-3 text-amber-400" /> Watch on:
+                <Tv className="w-3 h-3 text-amber-400" /> Watch:
               </span>
-              {movie.streaming_providers.slice(0, 2).map((p, idx) => {
+              {movie.streaming_providers.slice(0, 4).map((p, idx) => {
                 const cfg = getStreamingBadgeConfig(p.name);
                 const logo = p.logo_path || cfg.icon;
+                const link = p.watch_url || `https://www.google.com/search?q=watch+${encodeURIComponent(movie.title)}+${encodeURIComponent(p.name)}`;
                 return (
-                  <span
+                  <a
                     key={idx}
-                    className={`inline-flex items-center gap-1.5 text-[11px] font-semibold px-2 py-0.5 rounded-md border shadow-sm ${cfg.bg}`}
+                    href={link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    title={`Watch "${movie.title}" on ${p.name}`}
+                    className="p-1 rounded-lg bg-neutral-800 hover:bg-neutral-700 border border-neutral-750 hover:border-amber-400 shadow-sm transition-all transform hover:scale-110 active:scale-95 flex items-center justify-center shrink-0"
                   >
-                    {logo && (
-                      <img src={logo} alt="" className="w-3.5 h-3.5 rounded object-contain shrink-0" />
+                    {logo ? (
+                      <img
+                        src={logo}
+                        alt={p.name}
+                        className="w-5 h-5 rounded object-contain shrink-0"
+                      />
+                    ) : (
+                      <span className="text-[9px] font-bold px-1 text-white">{p.name.slice(0, 3)}</span>
                     )}
-                    <span className="truncate max-w-[110px]">{p.name}</span>
-                  </span>
+                  </a>
                 );
               })}
-              {movie.streaming_providers.length > 2 && (
-                <span className="text-[10px] text-neutral-400 font-medium px-1.5 py-0.5 rounded bg-neutral-900 border border-neutral-800">
-                  +{movie.streaming_providers.length - 2}
+              {movie.streaming_providers.length > 4 && (
+                <span
+                  className="text-[10px] text-neutral-400 font-medium px-1.5 py-0.5 rounded bg-neutral-900 border border-neutral-800"
+                  title={movie.streaming_providers.slice(4).map((p) => p.name).join(', ')}
+                >
+                  +{movie.streaming_providers.length - 4}
                 </span>
               )}
             </div>
           ) : (
             <div className="mt-3 flex items-center gap-1.5 text-[11px] text-neutral-400 bg-neutral-950/70 py-1 px-2 rounded-lg border border-neutral-800/80">
               <Tv className="w-3 h-3 text-amber-400/80 shrink-0" />
-              <span className="truncate text-neutral-400">Streaming availability loading...</span>
+              <a
+                href={`https://www.google.com/search?q=watch+${encodeURIComponent(movie.title)}+online`}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="hover:text-amber-400 transition"
+              >
+                Check streaming online ↗
+              </a>
             </div>
           )}
         </div>

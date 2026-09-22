@@ -17,7 +17,7 @@ interface ShelfModeProps {
   allSeedMovies: Movie[];
 }
 
-type TabType = 'trending' | 'popular' | 'top_rated' | 'curated' | 'loved' | 'watchlist';
+type TabType = 'trending' | 'popular' | 'netflix' | 'top_rated' | 'curated' | 'loved' | 'watchlist';
 type SortOption = 'popularity.desc' | 'vote_average.desc' | 'primary_release_date.desc' | 'primary_release_date.asc' | 'title.asc';
 type YearOption = 'All' | '2020s' | '2010s' | '2000s' | '1990s' | '1980s' | '1970s' | 'classics';
 
@@ -108,7 +108,10 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
           genreId,
           yearGte: boundaries.yearGte,
           yearLte: boundaries.yearLte,
+          watchProviderId: tab === 'netflix' ? 8 : undefined,
         });
+      } else if (tab === 'netflix') {
+        data = await tmdb.getNetflixMovies(pageNum);
       } else if (tab === 'trending') {
         data = await tmdb.getTrendingMovies(pageNum);
       } else if (tab === 'popular') {
@@ -298,6 +301,17 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
             }`}
           >
             <TrendingUp className="w-3.5 h-3.5" /> Popular
+          </button>
+          <button
+            onClick={() => setActiveTab('netflix')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs font-bold transition shrink-0 ${
+              activeTab === 'netflix'
+                ? 'bg-[#E50914] text-white shadow-md shadow-red-900/40'
+                : 'text-neutral-400 hover:text-white'
+            }`}
+          >
+            <span className="w-4 h-4 rounded bg-[#E50914] border border-white/20 flex items-center justify-center text-[10px] font-black text-white shrink-0">N</span>
+            <span>Netflix</span>
           </button>
           <button
             onClick={() => setActiveTab('top_rated')}
