@@ -2,12 +2,13 @@
 
 import React, { useState } from 'react';
 import Image from 'next/image';
-import { Play, Heart, ThumbsDown, Bookmark, Sparkles, Tv } from 'lucide-react';
+import { Play, Heart, ThumbsDown, Bookmark, Sparkles, Tv, Ticket, Info } from 'lucide-react';
 import { Movie } from '@/lib/tmdb/types';
 
 interface MovieCardProps {
   movie: Movie;
   onPlayTrailer: (movie: Movie) => void;
+  onSelectMovie?: (movie: Movie) => void;
   onLove?: (movie: Movie) => void;
   onDislike?: (movie: Movie) => void;
   onWatchlist?: (movie: Movie) => void;
@@ -20,6 +21,7 @@ interface MovieCardProps {
 export const MovieCard: React.FC<MovieCardProps> = ({
   movie,
   onPlayTrailer,
+  onSelectMovie,
   onLove,
   onDislike,
   onWatchlist,
@@ -185,7 +187,11 @@ export const MovieCard: React.FC<MovieCardProps> = ({
             </div>
           )}
 
-          <h4 className="font-semibold text-white text-base leading-snug line-clamp-1 group-hover:text-amber-400 transition-colors">
+          <h4
+            onClick={() => onSelectMovie ? onSelectMovie(movie) : onPlayTrailer(movie)}
+            title={`View details for ${movie.title}`}
+            className="font-semibold text-white text-base leading-snug line-clamp-1 group-hover:text-amber-400 transition-colors cursor-pointer hover:underline underline-offset-2 text-left"
+          >
             {movie.title}
           </h4>
 
@@ -218,7 +224,8 @@ export const MovieCard: React.FC<MovieCardProps> = ({
                 title={`In Theatres now - Get showtimes & tickets for ${movie.title}`}
                 className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-lg bg-red-950/80 border border-red-600/70 text-red-200 hover:bg-red-900 transition shadow-sm hover:scale-105 shrink-0"
               >
-                <span>🎟️ In Theatres ↗</span>
+                <Ticket className="w-3 h-3 text-red-400 shrink-0" />
+                <span>Theatres ↗</span>
               </a>
             )}
 

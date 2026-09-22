@@ -706,7 +706,7 @@ export class TMDbClient {
     if (!isNaN(numericId) && numericId > 0) {
       try {
         const [movieRes, videosRes, providers] = await Promise.all([
-          fetch(`${TMDB_BASE_URL}/movie/${numericId}?api_key=${this.apiKey}`),
+          fetch(`${TMDB_BASE_URL}/movie/${numericId}?api_key=${this.apiKey}&append_to_response=credits,keywords`),
           fetch(`${TMDB_BASE_URL}/movie/${numericId}/videos?api_key=${this.apiKey}`),
           this.getWatchProviders(numericId, local?.title)
         ]);
@@ -738,23 +738,42 @@ export class TMDbClient {
             };
           });
 
+          const director = m.credits?.crew?.find((c: any) => c.job === 'Director')?.name || local?.director;
+          const cast = m.credits?.cast?.slice(0, 8).map((c: any) => c.name) || local?.cast;
+          const keywords = m.keywords?.keywords?.map((k: any) => k.name) || [];
+
+          const releaseDate = m.release_date || (local ? local.release_date : "");
+          const today = new Date().toISOString().split('T')[0];
+          const diffDays = releaseDate ? Math.floor((new Date(today).getTime() - new Date(releaseDate).getTime()) / (1000 * 60 * 60 * 24)) : 999;
+          const isInTheatres = diffDays >= -14 && diffDays <= 75;
+          const titleClean = m.title || local?.title || 'Untitled';
+          const titleEnc = encodeURIComponent(titleClean);
+
           return {
             id: m.id,
-            title: m.title,
+            title: titleClean,
+            original_title: m.original_title,
             overview: m.overview || (local ? local.overview : "A captivating cinematic journey."),
             poster_path: m.poster_path
               ? `${TMDB_IMG_BASE}${m.poster_path}`
               : (local?.poster_path || "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=500&auto=format&fit=crop&q=80"),
             backdrop_path: m.backdrop_path ? `${TMDB_BACKDROP_BASE}${m.backdrop_path}` : undefined,
-            release_date: m.release_date || (local ? local.release_date : ""),
+            release_date: releaseDate,
             vote_average: m.vote_average ? Math.round(m.vote_average * 10) / 10 : 7.5,
+            vote_count: m.vote_count,
             genres: genres.length > 0 ? genres : ["Cinema"],
             runtime: m.runtime || local?.runtime,
             tagline: m.tagline || local?.tagline,
             trailer_key: trailer_key || local?.trailer_key,
-            director: local?.director,
-            cast: local?.cast,
-            streaming_providers: finalProviders.length > 0 ? finalProviders : undefined
+            director: director,
+            cast: cast,
+            keywords: keywords,
+            budget: m.budget,
+            revenue: m.revenue,
+            status: m.status,
+            streaming_providers: finalProviders.length > 0 ? finalProviders : undefined,
+            is_in_theatres: isInTheatres,
+            theatre_tickets_url: `https://www.google.com/search?q=${titleEnc}+movie+showtimes+tickets`,
           };
         }
       } catch (err) {

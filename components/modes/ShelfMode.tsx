@@ -8,6 +8,7 @@ import { MovieCard } from '../movie/MovieCard';
 
 interface ShelfModeProps {
   onPlayTrailer: (movie: Movie) => void;
+  onSelectMovie?: (movie: Movie) => void;
   onLove: (movie: Movie) => void;
   onDislike: (movie: Movie) => void;
   onWatchlist: (movie: Movie) => void;
@@ -25,6 +26,7 @@ type TheatricalFilter = 'all' | 'hide_theatres' | 'theatres_only';
 
 export const ShelfMode: React.FC<ShelfModeProps> = ({
   onPlayTrailer,
+  onSelectMovie,
   onLove,
   onDislike,
   onWatchlist,
@@ -684,6 +686,7 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
                 key={`${movie.id}-${movie.title}`}
                 movie={movie}
                 onPlayTrailer={onPlayTrailer}
+                onSelectMovie={onSelectMovie}
                 onLove={onLove}
                 onDislike={onDislike}
                 onWatchlist={onWatchlist}

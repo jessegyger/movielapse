@@ -23,6 +23,7 @@ import { webllmEngine } from '@/lib/webllm/engine';
 
 interface TwentyQuestionsModeProps {
   onPlayTrailer: (movie: Movie) => void;
+  onSelectMovie?: (movie: Movie) => void;
   onLove: (movie: Movie) => void;
   onDislike: (movie: Movie) => void;
   onWatchlist: (movie: Movie) => void;
@@ -207,6 +208,7 @@ const getProviderStyle = (name: string) => {
 
 export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
   onPlayTrailer,
+  onSelectMovie,
   onLove,
   onDislike,
   onWatchlist,
@@ -484,7 +486,11 @@ Recommend the top 3 tailored movie picks. For each pick, give the exact title, r
                             </span>
                           </div>
 
-                          <h3 className="text-sm font-bold text-white leading-tight truncate group-hover:text-amber-400 transition-colors">
+                          <h3
+                            onClick={() => onSelectMovie ? onSelectMovie(movie) : onPlayTrailer(movie)}
+                            title={`View details for ${movie.title}`}
+                            className="text-sm font-bold text-white leading-tight truncate group-hover:text-amber-400 transition-colors cursor-pointer hover:underline"
+                          >
                             {movie.title}
                           </h3>
 
@@ -838,7 +844,11 @@ Recommend the top 3 tailored movie picks. For each pick, give the exact title, r
                           <span className="text-neutral-400">{movie.release_date?.slice(0, 4)}</span>
                         </div>
 
-                        <h4 className="text-xs sm:text-sm font-bold text-white truncate group-hover:text-amber-400 transition-colors">
+                        <h4
+                          onClick={() => onSelectMovie ? onSelectMovie(movie) : onPlayTrailer(movie)}
+                          title={`View details for ${movie.title}`}
+                          className="text-xs sm:text-sm font-bold text-white truncate group-hover:text-amber-400 transition-colors cursor-pointer hover:underline"
+                        >
                           {movie.title}
                         </h4>
 

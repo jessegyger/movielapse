@@ -20,6 +20,10 @@ export interface Movie {
   is_in_theatres?: boolean;
   dvd_buy_url?: string;
   theatre_tickets_url?: string;
+  budget?: number;
+  revenue?: number;
+  status?: string;
+  keywords?: string[];
 }
 
 export type ReleaseFormat = 'all' | 'dvd' | 'theatrical';

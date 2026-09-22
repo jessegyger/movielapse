@@ -11,6 +11,7 @@ import { Header } from '@/components/common/Header';
 import { SettingsModal } from '@/components/common/SettingsModal';
 import { TasteProfilerModal } from '@/components/onboarding/TasteProfilerModal';
 import { TrailerModal } from '@/components/movie/TrailerModal';
+import { MovieDetailModal } from '@/components/movie/MovieDetailModal';
 import { TwentyQuestionsMode } from '@/components/modes/TwentyQuestionsMode';
 import { ChatMode } from '@/components/modes/ChatMode';
 import { ShelfMode } from '@/components/modes/ShelfMode';
@@ -24,6 +25,8 @@ export default function Home() {
   const store = useTasteStore();
   const [selectedTrailerMovie, setSelectedTrailerMovie] = useState<Movie | null>(null);
   const [isTrailerOpen, setIsTrailerOpen] = useState(false);
+  const [selectedDetailMovie, setSelectedDetailMovie] = useState<Movie | null>(null);
+  const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [isTasteProfilerOpen, setIsTasteProfilerOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [seedMovies, setSeedMovies] = useState<Movie[]>([]);
@@ -104,6 +107,23 @@ export default function Home() {
     }
   };
 
+  const handleSelectMovie = async (movie: Movie) => {
+    setSelectedDetailMovie(movie);
+    setIsDetailOpen(true);
+
+    // Fetch full rich movie details (director, full cast, keywords, box office, backdrop)
+    if (movie.id) {
+      try {
+        const full = await tmdb.getMovieDetails(movie.id);
+        if (full) {
+          setSelectedDetailMovie(full);
+        }
+      } catch (e) {
+        console.warn('Failed to load rich movie details', e);
+      }
+    }
+  };
+
   const activeEffectiveLayout: 'mobile' | 'tablet' | 'desktop' =
     store.deviceMode === 'auto' ? detectedLayout : store.deviceMode;
 
@@ -132,6 +152,7 @@ export default function Home() {
         return (
           <TwentyQuestionsMode
             onPlayTrailer={handlePlayTrailer}
+            onSelectMovie={handleSelectMovie}
             onLove={store.markLoved}
             onDislike={store.markDisliked}
             onWatchlist={store.markWatchlist}
@@ -145,6 +166,7 @@ export default function Home() {
         return (
           <ChatMode
             onPlayTrailer={handlePlayTrailer}
+            onSelectMovie={handleSelectMovie}
             onLove={store.markLoved}
             onDislike={store.markDisliked}
             onWatchlist={store.markWatchlist}
@@ -159,6 +181,7 @@ export default function Home() {
         return (
           <ShelfMode
             onPlayTrailer={handlePlayTrailer}
+            onSelectMovie={handleSelectMovie}
             onLove={store.markLoved}
             onDislike={store.markDisliked}
             onWatchlist={store.markWatchlist}
@@ -205,6 +228,7 @@ export default function Home() {
           lovedMovies={store.loved}
           watchlistMovies={store.watchlist}
           onPlayTrailer={handlePlayTrailer}
+          onSelectMovie={handleSelectMovie}
           onLove={store.markLoved}
           onDislike={store.markDisliked}
           onWatchlist={store.markWatchlist}
@@ -224,6 +248,20 @@ export default function Home() {
         movie={selectedTrailerMovie}
         isOpen={isTrailerOpen}
         onClose={() => setIsTrailerOpen(false)}
+      />
+
+      {/* Full Movie Details Modal */}
+      <MovieDetailModal
+        movie={selectedDetailMovie}
+        isOpen={isDetailOpen}
+        onClose={() => setIsDetailOpen(false)}
+        onPlayTrailer={handlePlayTrailer}
+        onLove={store.markLoved}
+        onDislike={store.markDisliked}
+        onWatchlist={store.markWatchlist}
+        isLoved={selectedDetailMovie ? store.loved.some((m) => String(m.id) === String(selectedDetailMovie.id)) : false}
+        isDisliked={selectedDetailMovie ? store.disliked.some((m) => String(m.id) === String(selectedDetailMovie.id)) : false}
+        isWatchlist={selectedDetailMovie ? store.watchlist.some((m) => String(m.id) === String(selectedDetailMovie.id)) : false}
       />
 
       {/* Interactive Taste Profiler Onboarding */}

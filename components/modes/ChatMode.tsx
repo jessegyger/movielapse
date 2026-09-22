@@ -8,6 +8,7 @@ import { webllmEngine, ChatMessage } from '@/lib/webllm/engine';
 
 interface ChatModeProps {
   onPlayTrailer: (movie: Movie) => void;
+  onSelectMovie?: (movie: Movie) => void;
   onLove: (movie: Movie) => void;
   onDislike: (movie: Movie) => void;
   onWatchlist: (movie: Movie) => void;
@@ -27,6 +28,7 @@ const INSPIRATION_CHIPS = [
 
 export const ChatMode: React.FC<ChatModeProps> = ({
   onPlayTrailer,
+  onSelectMovie,
   onLove,
   onDislike,
   onWatchlist,
@@ -187,6 +189,7 @@ export const ChatMode: React.FC<ChatModeProps> = ({
                       key={movie.id}
                       movie={movie}
                       onPlayTrailer={onPlayTrailer}
+                      onSelectMovie={onSelectMovie}
                       onLove={onLove}
                       onDislike={onDislike}
                       onWatchlist={onWatchlist}

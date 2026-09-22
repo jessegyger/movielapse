@@ -12,6 +12,7 @@ interface TabletLayoutProps {
   lovedMovies: Movie[];
   watchlistMovies: Movie[];
   onPlayTrailer: (movie: Movie) => void;
+  onSelectMovie?: (movie: Movie) => void;
   onLove: (movie: Movie) => void;
   onDislike: (movie: Movie) => void;
   onWatchlist: (movie: Movie) => void;
@@ -25,6 +26,7 @@ export const TabletLayout: React.FC<TabletLayoutProps> = ({
   lovedMovies,
   watchlistMovies,
   onPlayTrailer,
+  onSelectMovie,
   onLove,
   onDislike,
   onWatchlist,
@@ -93,6 +95,7 @@ export const TabletLayout: React.FC<TabletLayoutProps> = ({
                 key={movie.id}
                 movie={movie}
                 onPlayTrailer={onPlayTrailer}
+                onSelectMovie={onSelectMovie}
                 onLove={onLove}
                 onDislike={onDislike}
                 onWatchlist={onWatchlist}
