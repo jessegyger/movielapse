@@ -88,6 +88,8 @@ export class TMDbClient {
     page?: number;
     sortBy?: string;
     genreId?: number;
+    /** Multiple genre IDs joined with comma (= AND) for TMDb with_genres */
+    genreIds?: number[];
     withoutGenreIds?: number[];
     yearGte?: string;
     yearLte?: string;
@@ -138,7 +140,9 @@ export class TMDbClient {
       url += `&vote_count.lte=${options.voteCountLte}`;
     }
 
-    if (options.genreId) {
+    if (options.genreIds && options.genreIds.length > 0) {
+      url += `&with_genres=${options.genreIds.join(',')}`;
+    } else if (options.genreId) {
       url += `&with_genres=${options.genreId}`;
     }
     if (options.withoutGenreIds && options.withoutGenreIds.length > 0) {

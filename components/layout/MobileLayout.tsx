@@ -31,42 +31,63 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
   const lastScrollTopRef = useRef(0);
   const ignoreScrollUntilRef = useRef(0);
 
-  // Hide bottom nav on scroll down inside nested scrollers — only when there's real overflow
+  // Hide bottom nav on any scroll (window or nested) — show again on scroll up
   useEffect(() => {
+    const readScrollTop = (t: EventTarget | null): { y: number; overflow: number } | null => {
+      if (t instanceof HTMLElement) {
+        return { y: t.scrollTop, overflow: t.scrollHeight - t.clientHeight };
+      }
+      // Window / document scroll (Vault page scroll)
+      const el = document.scrollingElement as HTMLElement | null;
+      if (!el) return null;
+      return { y: el.scrollTop, overflow: el.scrollHeight - el.clientHeight };
+    };
+
     const onScroll = (e: Event) => {
-      const t = e.target;
-      if (!(t instanceof HTMLElement)) return;
-      const overflow = t.scrollHeight - t.clientHeight;
-      if (overflow < 160) return;
+      const info = readScrollTop(e.target === document ? document.scrollingElement : e.target);
+      if (!info) return;
+      // Ignore tiny horizontal chip rows, etc.
+      if (info.overflow < 40 && e.target instanceof HTMLElement && e.target !== document.documentElement && e.target !== document.body) {
+        // nested element with almost no overflow — skip
+        if (e.target.scrollWidth > e.target.clientWidth + 20 && e.target.scrollHeight <= e.target.clientHeight + 40) {
+          return;
+        }
+        if (info.overflow < 40) return;
+      }
 
       const now = Date.now();
       if (now < ignoreScrollUntilRef.current) return;
 
-      const y = t.scrollTop;
+      const { y } = info;
       const delta = y - lastScrollTopRef.current;
       lastScrollTopRef.current = y;
 
-      if (y < 24) {
+      if (y < 20) {
         setNavVisible((v) => {
-          if (!v) ignoreScrollUntilRef.current = now + 280;
+          if (!v) ignoreScrollUntilRef.current = now + 220;
           return true;
         });
         return;
       }
-      if (delta > 18) {
+      if (delta > 12) {
         setNavVisible((v) => {
-          if (v) ignoreScrollUntilRef.current = now + 280;
+          if (v) ignoreScrollUntilRef.current = now + 220;
           return false;
         });
-      } else if (delta < -18) {
+      } else if (delta < -12) {
         setNavVisible((v) => {
-          if (!v) ignoreScrollUntilRef.current = now + 280;
+          if (!v) ignoreScrollUntilRef.current = now + 220;
           return true;
         });
       }
     };
+
     document.addEventListener('scroll', onScroll, true);
-    return () => document.removeEventListener('scroll', onScroll, true);
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      document.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('scroll', onScroll);
+    };
   }, []);
 
   // Finder open → treat as selected tab (show nav)

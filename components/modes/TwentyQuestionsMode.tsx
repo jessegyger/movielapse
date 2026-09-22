@@ -50,7 +50,7 @@ const QUESTION_BANK: QuestionDef[] = [
   {
     id: 2,
     category: 'Genre',
-    question: 'What kind of movie?',
+    question: 'What kind of movie? (pick one or more)',
     options: [
       { label: 'Comedy', tag: 'comedy', icon: '😂' },
       { label: 'Thriller', tag: 'thriller', icon: '🕵️' },
@@ -198,9 +198,38 @@ const QUESTION_BANK: QuestionDef[] = [
   },
 ];
 
+type StepAnswer = { label: string; tags: string[] };
+
+const GENRE_TAGS = ['comedy', 'thriller', 'horror', 'action', 'romance', 'scifi', 'drama'] as const;
+
+function flattenAnswerTags(answers: Record<number, StepAnswer>): string[] {
+  return Object.values(answers).flatMap((a) => a.tags);
+}
+
+function genreNameForTag(tag: string): string[] {
+  switch (tag) {
+    case 'comedy':
+      return ['Comedy'];
+    case 'horror':
+      return ['Horror'];
+    case 'romance':
+      return ['Romance'];
+    case 'thriller':
+      return ['Thriller', 'Crime', 'Mystery'];
+    case 'action':
+      return ['Action', 'Adventure'];
+    case 'scifi':
+      return ['Science Fiction', 'Fantasy'];
+    case 'drama':
+      return ['Drama'];
+    default:
+      return [];
+  }
+}
+
 /** After answering `afterStep`, go to the next unanswered — wrap to earlier gaps if you jumped ahead. */
 function nextUnansweredStep(
-  answered: Record<number, { label: string; tag: string }>,
+  answered: Record<number, StepAnswer>,
   afterStep: number
 ): number | null {
   for (let i = afterStep + 1; i < QUESTION_BANK.length; i++) {
@@ -356,7 +385,10 @@ function scoreMovie(movie: Movie, tags: string[]): number {
   const genres = movie.genres || [];
 
   if (tags.includes('comedy') && genres.includes('Comedy') && !genres.includes('Horror')) score += 12;
-  if (tags.includes('comedy') && genres.includes('Comedy') && genres.includes('Horror')) score -= 8;
+  if (tags.includes('comedy') && tags.includes('horror') && genres.includes('Comedy') && genres.includes('Horror'))
+    score += 14;
+  if (tags.includes('comedy') && !tags.includes('horror') && genres.includes('Comedy') && genres.includes('Horror'))
+    score -= 8;
   if (tags.includes('thriller') && genres.some((g) => ['Thriller', 'Crime', 'Mystery'].includes(g))) score += 12;
   if (tags.includes('horror') && genres.includes('Horror')) score += 14;
   if (tags.includes('action') && genres.some((g) => ['Action', 'Adventure'].includes(g))) score += 12;
@@ -450,15 +482,15 @@ function hardPasses(movie: Movie, tags: string[]): boolean {
     if (genres.includes('Family')) return false;
   }
 
-  if (tags.includes('comedy') && !genres.includes('Comedy')) return false;
-  if (tags.includes('horror') && !genres.includes('Horror')) return false;
-  if (tags.includes('romance') && !genres.includes('Romance')) return false;
-  if (tags.includes('thriller') && !genres.some((g) => ['Thriller', 'Crime', 'Mystery'].includes(g))) return false;
-  if (tags.includes('action') && !genres.some((g) => ['Action', 'Adventure'].includes(g))) return false;
-  if (tags.includes('scifi') && !genres.some((g) => ['Science Fiction', 'Fantasy'].includes(g))) return false;
-  if (tags.includes('drama') && !genres.includes('Drama')) return false;
-
-  // Comedy means comedy-first — not horror comedies like Evil Dead 2 unless Horror was also chosen
+  // Genre walls — multi-select requires ALL chosen genres
+  const pickedGenres = GENRE_TAGS.filter((t) => tags.includes(t));
+  if (pickedGenres.length > 0) {
+    for (const gTag of pickedGenres) {
+      const names = genreNameForTag(gTag);
+      if (!names.some((n) => genres.includes(n))) return false;
+    }
+  }
+  // Comedy alone still blocks horror-comedies
   if (tags.includes('comedy') && !tags.includes('horror') && genres.includes('Horror')) return false;
   if (tags.includes('romance') && !tags.includes('horror') && genres.includes('Horror')) return false;
 
@@ -489,6 +521,7 @@ function hardPasses(movie: Movie, tags: string[]): boolean {
 
 type PoolQuery = {
   genreId?: number;
+  genreIds?: number[];
   withoutGenreIds?: number[];
   runtimeLte?: number;
   runtimeGte?: number;
@@ -508,14 +541,14 @@ type PoolQuery = {
 
 function poolQueryFromTags(tags: string[]): PoolQuery {
   const q: PoolQuery = {};
-  for (const [tag, id] of Object.entries(GENRE_TMDB)) {
-    if (tags.includes(tag) && tag !== 'animation' && tag !== 'family') {
-      q.genreId = id;
-      break;
-    }
+  const pickedGenreIds = GENRE_TAGS.filter((t) => tags.includes(t)).map((t) => GENRE_TMDB[t]);
+  if (pickedGenreIds.length === 1) {
+    q.genreId = pickedGenreIds[0];
+  } else if (pickedGenreIds.length > 1) {
+    q.genreIds = pickedGenreIds; // TMDb comma = AND (e.g. Comedy + Horror)
   }
   if (tags.includes('want_animated')) q.genreId = ANIMATION_GENRE;
-  if (tags.includes('want_kids') && !q.genreId) q.genreId = FAMILY_GENRE;
+  if (tags.includes('want_kids') && !q.genreId && !q.genreIds?.length) q.genreId = FAMILY_GENRE;
   if (tags.includes('want_adult')) {
     q.withoutGenreIds = [ANIMATION_GENRE, FAMILY_GENRE];
   }
@@ -619,6 +652,7 @@ async function fetchDiscoverPages(
       tmdb.discoverMovies({
         page,
         genreId: query.genreId,
+        genreIds: query.genreIds,
         withoutGenreIds: query.withoutGenreIds,
         runtimeLte: query.runtimeLte,
         runtimeGte: query.runtimeGte,
@@ -647,6 +681,7 @@ async function fetchDiscoverPages(
   // Only blend seeds when browsing broadly — never when keywords/years lock the pool
   if (
     !query.genreId &&
+    !query.genreIds?.length &&
     !query.withoutGenreIds?.length &&
     !query.withKeywords &&
     !query.withoutKeywords &&
@@ -668,7 +703,7 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
   onSelectMovie,
 }) => {
   const [currentStep, setCurrentStep] = useState(0);
-  const [answers, setAnswers] = useState<Record<number, { label: string; tag: string }>>({});
+  const [answers, setAnswers] = useState<Record<number, StepAnswer>>({});
   const [moviePool, setMoviePool] = useState<Movie[]>([]);
   const [ranked, setRanked] = useState<Movie[]>([]);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
@@ -773,12 +808,12 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
     };
   }, [loadPoolForTags]);
 
-  const celebrateIfReady = (scored: Movie[], nextAnswers: Record<number, { label: string; tag: string }>) => {
+  const celebrateIfReady = (scored: Movie[], nextAnswers: Record<number, StepAnswer>) => {
     const n = Object.keys(nextAnswers).length;
     if (n < MIN_QS_BEFORE_FOUND) return false;
     if (scored.length === 0) return false;
 
-    const tags = Object.values(nextAnswers).map((a) => a.tag);
+    const tags = flattenAnswerTags(nextAnswers);
     const hardLeft = scored.filter((m) => hardPasses(m, tags));
     const pool = hardLeft.length > 0 ? hardLeft : scored;
     const tight = pool.length > 0 && pool.length <= FOUND_THRESHOLD && (catalogTotal ?? 999) <= 40;
@@ -819,11 +854,8 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
     setChromeVisible(true);
   };
 
-  const handleSelectOption = async (option: { label: string; tag: string }) => {
-    const nextAnswers = { ...answers, [currentStep]: option };
-    setAnswers(nextAnswers);
-    const nextTags = Object.values(nextAnswers).map((a) => a.tag);
-
+  const advanceAfterAnswer = async (nextAnswers: Record<number, StepAnswer>) => {
+    const nextTags = flattenAnswerTags(nextAnswers);
     const scored = await loadPoolForTags(nextTags);
 
     if (celebrateIfReady(scored, nextAnswers)) {
@@ -837,9 +869,51 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
       return;
     }
 
-    // All questions answered but still no celebrate (e.g. empty pool) — stay on last Q, don't wrap to start
     setCurrentStep(QUESTION_BANK.length - 1);
     setChromeVisible(true);
+  };
+
+  const handleSelectOption = async (option: { label: string; tag: string }) => {
+    // Genre is multi-select — toggle, don't advance (except Don't care)
+    if (currentQ.category === 'Genre' && option.tag !== 'any') {
+      const prev = (answers[currentStep]?.tags || []).filter((t) => t !== 'any');
+      const nextTags = prev.includes(option.tag)
+        ? prev.filter((t) => t !== option.tag)
+        : [...prev, option.tag];
+      const labels = currentQ.options
+        .filter((o) => nextTags.includes(o.tag))
+        .map((o) => o.label);
+      const nextAnswers = {
+        ...answers,
+        [currentStep]: {
+          label: labels.length ? labels.join(' + ') : '',
+          tags: nextTags,
+        },
+      };
+      if (nextTags.length === 0) {
+        const cleared = { ...answers };
+        delete cleared[currentStep];
+        setAnswers(cleared);
+        await loadPoolForTags(flattenAnswerTags(cleared));
+        return;
+      }
+      setAnswers(nextAnswers);
+      await loadPoolForTags(flattenAnswerTags(nextAnswers));
+      return;
+    }
+
+    const nextAnswers = {
+      ...answers,
+      [currentStep]: { label: option.label, tags: [option.tag] },
+    };
+    setAnswers(nextAnswers);
+    await advanceAfterAnswer(nextAnswers);
+  };
+
+  const confirmGenreAndContinue = async () => {
+    const cur = answers[currentStep];
+    if (!cur?.tags?.length) return;
+    await advanceAfterAnswer(answers);
   };
 
   const handleReset = () => {
@@ -855,7 +929,7 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
   const loadMoreFromTmdb = async () => {
     if (isLoadingMore || nextPage > maxPages) return;
     setIsLoadingMore(true);
-    const tags = Object.values(answers).map((a) => a.tag);
+    const tags = flattenAnswerTags(answers);
     const { movies } = await fetchDiscoverPages(activeQueryRef.current, nextPage, 4);
     setNextPage((p) => p + 4);
     const merged = new Map(moviePool.map((m) => [String(m.id), m]));
@@ -1159,9 +1233,15 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
         }`}
       >
         <div className="bg-neutral-900/90 border border-neutral-800 rounded-xl px-2.5 py-2 sm:px-3 sm:py-2.5">
+          {currentQ.category === 'Genre' ? (
+            <p className="text-[10px] text-neutral-400 mb-2 px-0.5">
+              Tap one or more genres, then Continue — e.g. Comedy + Horror
+            </p>
+          ) : null}
           <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
             {currentQ.options.map((opt) => {
-              const isSelected = answers[currentStep]?.tag === opt.tag;
+              const selectedTags = answers[currentStep]?.tags || [];
+              const isSelected = selectedTags.includes(opt.tag);
               const isDontCare =
                 opt.tag === 'any' || opt.tag.endsWith('_any') || opt.tag.endsWith('_skip');
               const spanFull = isDontCare && currentQ.options.length % 2 === 1;
@@ -1185,6 +1265,15 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
               );
             })}
           </div>
+          {currentQ.category === 'Genre' && (answers[currentStep]?.tags?.length ?? 0) > 0 ? (
+            <button
+              type="button"
+              onClick={() => void confirmGenreAndContinue()}
+              className="mt-2 w-full py-2.5 rounded-xl bg-amber-500 text-neutral-950 text-sm font-bold"
+            >
+              Continue with {answers[currentStep]?.label}
+            </button>
+          ) : null}
         </div>
       </div>
 
