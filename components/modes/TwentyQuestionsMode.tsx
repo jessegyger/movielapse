@@ -127,10 +127,11 @@ const QUESTION_BANK: QuestionDef[] = [
     id: 8,
     question: 'Rating OK with?',
     options: [
-      { label: 'G / PG (everyone)', tag: 'rate_g', icon: '🟢' },
+      { label: 'G / PG', tag: 'rate_g', icon: '🟢' },
       { label: 'Up to PG-13', tag: 'rate_pg13', icon: '🟡' },
-      { label: 'Up to R', tag: 'rate_r', icon: '🟠' },
-      { label: 'Anything (incl. adult)', tag: 'rate_any', icon: '🔴' },
+      { label: 'Just R', tag: 'rate_r_only', icon: '🟠' },
+      { label: 'Up to R', tag: 'rate_r', icon: '🔶' },
+      { label: 'NC-17 / X', tag: 'rate_nc17', icon: '🔴' },
       { label: "Don't care", tag: 'rate_skip', icon: '🎲' },
     ],
   },
@@ -202,6 +203,12 @@ const KW_FOREST = '233960|156326';
 const KW_BEACH = '966|13088';
 const KW_SCHOOL = '339|14544';
 const KW_WAR = '14643|1701';
+/** TMDb keywords tagged on titles with notable nudity / erotic content (not a perfect “how much” score) */
+const KW_NUDITY = '281741|359980|256466|190370';
+
+function mergeKeywords(existing: string | undefined, next: string): string {
+  return existing ? `${existing},${next}` : next;
+}
 
 const SETTING_TAGS = [
   'space',
@@ -342,7 +349,8 @@ function scoreMovie(movie: Movie, tags: string[]): number {
   if (tags.includes('no_tragedy') && textHas(movie, /\b(tragic|grief|dies|death of|suicide)\b/i)) score -= 12;
   if (tags.includes('super_sad') && (genres.includes('Drama') || textHas(movie, /\b(tragic|grief|loss|heartbreak)\b/i))) score += 8;
   if (tags.includes('no_nudity') && textHas(movie, /\b(erotic|nude|nudity|sexual)\b/i)) score -= 15;
-  if (tags.includes('lots_nudity') && textHas(movie, /\b(erotic|sensual|affair|seduc)\b/i)) score += 8;
+  if (tags.includes('lots_nudity')) score += 12; // Pool already keyword-locked; keep them on top
+  if (tags.includes('rate_r_only') || tags.includes('rate_nc17')) score += 2;
 
   return score;
 }
@@ -411,8 +419,12 @@ type PoolQuery = {
   yearGte?: string;
   yearLte?: string;
   withKeywords?: string;
+  withoutKeywords?: string;
   certificationCountry?: string;
+  certification?: string;
   certificationLte?: string;
+  certificationGte?: string;
+  includeAdult?: boolean;
 };
 
 function poolQueryFromTags(tags: string[]): PoolQuery {
@@ -449,29 +461,46 @@ function poolQueryFromTags(tags: string[]): PoolQuery {
 
   if (tags.includes('space')) {
     if (!q.genreId) q.genreId = GENRE_TMDB.scifi;
-    q.withKeywords = KW_SPACE;
+    q.withKeywords = mergeKeywords(q.withKeywords, KW_SPACE);
   }
-  if (tags.includes('cabin')) q.withKeywords = KW_FOREST;
-  if (tags.includes('summer')) q.withKeywords = KW_BEACH;
-  if (tags.includes('school')) q.withKeywords = KW_SCHOOL;
+  if (tags.includes('cabin')) q.withKeywords = mergeKeywords(q.withKeywords, KW_FOREST);
+  if (tags.includes('summer')) q.withKeywords = mergeKeywords(q.withKeywords, KW_BEACH);
+  if (tags.includes('school')) q.withKeywords = mergeKeywords(q.withKeywords, KW_SCHOOL);
   if (tags.includes('warzone')) {
     q.genreId = 10752; // War
-    q.withKeywords = KW_WAR;
+    q.withKeywords = mergeKeywords(q.withKeywords, KW_WAR);
   }
   if (tags.includes('fantasy_world') && !q.genreId) q.genreId = 14; // Fantasy
 
   if (tags.includes('short')) q.runtimeLte = 110;
   if (tags.includes('epic')) q.runtimeGte = 140;
 
+  // Rating — exact vs ceiling. US: G < PG < PG-13 < R < NC-17
   if (tags.includes('rate_g')) {
     q.certificationCountry = 'US';
     q.certificationLte = 'PG';
   } else if (tags.includes('rate_pg13')) {
     q.certificationCountry = 'US';
     q.certificationLte = 'PG-13';
+  } else if (tags.includes('rate_r_only')) {
+    q.certificationCountry = 'US';
+    q.certification = 'R';
   } else if (tags.includes('rate_r')) {
     q.certificationCountry = 'US';
     q.certificationLte = 'R';
+  } else if (tags.includes('rate_nc17')) {
+    q.certificationCountry = 'US';
+    q.certification = 'NC-17';
+    q.includeAdult = true;
+  }
+
+  // Nudity: TMDb has keyword tags (not a 0–10 nudity meter). Drive discover from those.
+  if (tags.includes('lots_nudity')) {
+    q.withKeywords = mergeKeywords(q.withKeywords, KW_NUDITY);
+    q.includeAdult = true;
+  }
+  if (tags.includes('no_nudity')) {
+    q.withoutKeywords = KW_NUDITY;
   }
 
   if (tags.includes('mood_funny') && !q.genreId) q.genreId = GENRE_TMDB.comedy;
@@ -504,8 +533,12 @@ async function fetchDiscoverPages(
         yearGte: query.yearGte,
         yearLte: query.yearLte,
         withKeywords: query.withKeywords,
+        withoutKeywords: query.withoutKeywords,
         certificationCountry: query.certificationCountry,
+        certification: query.certification,
         certificationLte: query.certificationLte,
+        certificationGte: query.certificationGte,
+        includeAdult: query.includeAdult,
         sortBy: 'popularity.desc',
       })
     )
@@ -522,8 +555,11 @@ async function fetchDiscoverPages(
     !query.genreId &&
     !query.withoutGenreIds?.length &&
     !query.withKeywords &&
+    !query.withoutKeywords &&
     !query.yearGte &&
-    !query.yearLte
+    !query.yearLte &&
+    !query.certification &&
+    !query.certificationLte
   ) {
     tmdb.getSeedMovies().forEach((m) => {
       if (!map.has(String(m.id))) map.set(String(m.id), m);
@@ -763,19 +799,19 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
         {ranked.length > 1 ? (
           <div className="w-full mt-2">
             <p className="text-[10px] uppercase font-bold text-neutral-500 mb-2 text-center">Also close</p>
-            <div className="flex gap-3 overflow-x-auto pb-2 px-1 snap-x snap-mandatory" style={{ scrollbarWidth: 'thin' }}>
-              {ranked.slice(1, 30).map((m, i) => (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 pb-4">
+              {ranked.slice(1, 40).map((m, i) => (
                 <button
                   key={m.id}
                   type="button"
                   onClick={() => (onSelectMovie ? onSelectMovie(m) : onPlayTrailer(m))}
-                  className="relative shrink-0 w-28 sm:w-36 aspect-[2/3] rounded-xl overflow-hidden border border-neutral-700 hover:border-amber-400 transition snap-start bg-neutral-900"
+                  className="relative w-full aspect-[2/3] rounded-xl overflow-hidden border border-neutral-700 hover:border-amber-400 transition bg-neutral-900"
                   title={m.title}
                 >
                   {m.poster_path ? (
-                    <Image src={m.poster_path} alt={m.title} fill sizes="144px" className="object-cover" unoptimized />
+                    <Image src={m.poster_path} alt={m.title} fill sizes="180px" className="object-cover" unoptimized />
                   ) : null}
-                  <span className="absolute top-1 left-1 text-[10px] font-black bg-black/75 text-amber-300 px-1 rounded">
+                  <span className="absolute top-1.5 left-1.5 text-[10px] font-black bg-black/75 text-amber-300 px-1 rounded">
                     #{i + 2}
                   </span>
                   <span className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/90 to-transparent px-1.5 pt-5 pb-1.5 text-[11px] font-semibold text-white line-clamp-2 text-left">

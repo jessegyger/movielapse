@@ -94,14 +94,19 @@ export class TMDbClient {
     runtimeLte?: number;
     runtimeGte?: number;
     withKeywords?: string;
+    withoutKeywords?: string;
     certificationCountry?: string;
+    certification?: string;
     certificationLte?: string;
+    certificationGte?: string;
+    includeAdult?: boolean;
     watchProviderId?: number;
     watchRegion?: string;
     releaseFormat?: 'all' | 'dvd' | 'theatrical';
   } = {}): Promise<{ results: Movie[]; totalPages: number; totalResults: number }> {
     const page = options.page || 1;
-    let url = `${TMDB_BASE_URL}/discover/movie?api_key=${this.apiKey}&page=${page}&include_adult=false`;
+    const includeAdult = options.includeAdult === true;
+    let url = `${TMDB_BASE_URL}/discover/movie?api_key=${this.apiKey}&page=${page}&include_adult=${includeAdult}`;
 
     const today = new Date().toISOString().split('T')[0];
     if (options.releaseFormat === 'dvd') {
@@ -144,8 +149,20 @@ export class TMDbClient {
     if (options.withKeywords) {
       url += `&with_keywords=${encodeURIComponent(options.withKeywords)}`;
     }
-    if (options.certificationCountry && options.certificationLte) {
-      url += `&certification_country=${options.certificationCountry}&certification.lte=${encodeURIComponent(options.certificationLte)}`;
+    if (options.withoutKeywords) {
+      url += `&without_keywords=${encodeURIComponent(options.withoutKeywords)}`;
+    }
+    if (options.certificationCountry) {
+      url += `&certification_country=${options.certificationCountry}`;
+      if (options.certification) {
+        url += `&certification=${encodeURIComponent(options.certification)}`;
+      }
+      if (options.certificationLte) {
+        url += `&certification.lte=${encodeURIComponent(options.certificationLte)}`;
+      }
+      if (options.certificationGte) {
+        url += `&certification.gte=${encodeURIComponent(options.certificationGte)}`;
+      }
     }
 
     if (options.watchProviderId) {
