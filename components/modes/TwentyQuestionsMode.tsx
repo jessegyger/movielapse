@@ -45,15 +45,18 @@ interface QuestionDef {
 const QUESTION_BANK: QuestionDef[] = [
   {
     id: 1,
-    question: "What vibe are you craving tonight?",
-    subtitle: "Select the dominant impulse of your evening",
+    question: "What kind of movie tonight?",
+    subtitle: "Pick a lane — or say you don't care and we'll help you find one",
     options: [
-      { label: "Mind-Bending & Existential", tag: "mind_bending", icon: "🧠" },
-      { label: "High-Octane Adrenaline", tag: "action", icon: "⚡" },
-      { label: "Cozy, Melancholy & Thoughtful", tag: "drama", icon: "☕" },
-      { label: "Dark, Tense & Gripping Mystery", tag: "thriller", icon: "🕵️" },
-      { label: "Laugh-Out-Loud Escapism", tag: "comedy", icon: "😂" },
-      { label: "Feel-Good & Inspiring", tag: "uplifting", icon: "❤️" },
+      { label: "Comedy", tag: "comedy", icon: "😂" },
+      { label: "Thriller", tag: "thriller", icon: "🕵️" },
+      { label: "Horror", tag: "horror", icon: "👻" },
+      { label: "Action", tag: "action", icon: "⚡" },
+      { label: "Romance", tag: "romance", icon: "💕" },
+      { label: "Sci-Fi / Fantasy", tag: "scifi", icon: "🚀" },
+      { label: "Drama", tag: "drama", icon: "🎭" },
+      { label: "Animation / Family", tag: "animation", icon: "🎨" },
+      { label: "I don't care — help me pick", tag: "any", icon: "🎲" },
     ],
   },
   {
@@ -65,6 +68,7 @@ const QUESTION_BANK: QuestionDef[] = [
       { label: "Atmospheric, slow-burn tension", tag: "slow", icon: "🕯️" },
       { label: "Punchy sub-100 minute tight script", tag: "short", icon: "⏱️" },
       { label: "Expansive, immersive 2.5hr+ epic", tag: "epic", icon: "🌌" },
+      { label: "I don't care", tag: "pace_any", icon: "🎲" },
     ],
   },
   {
@@ -76,6 +80,7 @@ const QUESTION_BANK: QuestionDef[] = [
       { label: "90s & 2000s Peak Genre Cinema", tag: "90s_00s", icon: "📼" },
       { label: "70s & 80s Gritty Grain & Practical FX", tag: "retro", icon: "📻" },
       { label: "Timeless Golden Age Cinema", tag: "classic", icon: "🎞️" },
+      { label: "I don't care", tag: "era_any", icon: "🎲" },
     ],
   },
   {
@@ -87,6 +92,7 @@ const QUESTION_BANK: QuestionDef[] = [
       { label: "Warm sunlit coastal & summer breeze", tag: "summer", icon: "☀️" },
       { label: "Misty pine woods & isolated cabins", tag: "cabin", icon: "🌲" },
       { label: "Vast silent deep space & cosmic void", tag: "space", icon: "🚀" },
+      { label: "I don't care", tag: "setting_any", icon: "🎲" },
     ],
   },
   {
@@ -97,6 +103,7 @@ const QUESTION_BANK: QuestionDef[] = [
       { label: "Whiteboard puzzle with crazy twists", tag: "complex", icon: "🧩" },
       { label: "Razor-sharp, straightforward high-stakes", tag: "direct", icon: "🎯" },
       { label: "Ambiguous & poetic ending that lingers", tag: "ambiguous", icon: "💭" },
+      { label: "I don't care", tag: "plot_any", icon: "🎲" },
     ],
   },
   {
@@ -108,6 +115,7 @@ const QUESTION_BANK: QuestionDef[] = [
       { label: "Deeply moved & emotionally refreshed", tag: "emotional", icon: "❤️" },
       { label: "Pumped up with pure hype & adrenaline", tag: "hype", icon: "🔥" },
       { label: "Unwind completely with supreme storytelling", tag: "relax", icon: "🛋️" },
+      { label: "I don't care", tag: "goal_any", icon: "🎲" },
     ],
   },
   // Additional questions for 12 Questions (Deep Mode)
@@ -120,6 +128,7 @@ const QUESTION_BANK: QuestionDef[] = [
       { label: "Date night / Partner watch", tag: "date", icon: "🥂" },
       { label: "Group of friends / Crowd pleaser", tag: "friends", icon: "🍿" },
       { label: "Family or mixed generations", tag: "family", icon: "🛋️" },
+      { label: "I don't care", tag: "crowd_any", icon: "🎲" },
     ],
   },
   {
@@ -131,6 +140,7 @@ const QUESTION_BANK: QuestionDef[] = [
       { label: "Reluctant everyday person in danger", tag: "reluctant", icon: "⚡" },
       { label: "Obsessive genius pushed to the brink", tag: "obsessive", icon: "🔬" },
       { label: "Charismatic ensemble / buddy dynamic", tag: "duo", icon: "🤝" },
+      { label: "I don't care", tag: "hero_any", icon: "🎲" },
     ],
   },
   {
@@ -142,6 +152,7 @@ const QUESTION_BANK: QuestionDef[] = [
       { label: "Monumental, thundering orchestral score", tag: "orchestral", icon: "🎻" },
       { label: "Intimate acoustic, jazz & evocative silence", tag: "jazz", icon: "🎷" },
       { label: "Vintage needle-drops & grungy rock", tag: "rock", icon: "🎸" },
+      { label: "I don't care", tag: "music_any", icon: "🎲" },
     ],
   },
   {
@@ -153,6 +164,7 @@ const QUESTION_BANK: QuestionDef[] = [
       { label: "No depressing, gut-punch tragedy", tag: "no_tragedy", icon: "🚫" },
       { label: "No cheesy romance or cliché tropes", tag: "no_cliches", icon: "🚫" },
       { label: "Zero restrictions: hit me with raw cinema", tag: "raw", icon: "🔥" },
+      { label: "I don't care", tag: "deal_any", icon: "🎲" },
     ],
   },
   {
@@ -164,6 +176,7 @@ const QUESTION_BANK: QuestionDef[] = [
       { label: "Warm, luminous & humanistic", tag: "warm", icon: "🌅" },
       { label: "Melancholic, bittersweet nostalgia", tag: "nostalgia", icon: "🍂" },
       { label: "Surreal, dreamlike & hypnotic", tag: "surreal", icon: "🔮" },
+      { label: "I don't care", tag: "tone_any", icon: "🎲" },
     ],
   },
   {
@@ -175,6 +188,7 @@ const QUESTION_BANK: QuestionDef[] = [
       { label: "Kinetic cutting & stylish flair", tag: "kinetic", icon: "✂️" },
       { label: "Symmetrical, painterly tableau frames", tag: "painterly", icon: "🖼️" },
       { label: "Grounded, gritty handheld realism", tag: "gritty", icon: "📹" },
+      { label: "I don't care", tag: "style_any", icon: "🎲" },
     ],
   },
 ];
@@ -272,25 +286,35 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
       const releaseYear = parseInt(movie.release_date?.slice(0, 4) || '2015', 10);
       const runtime = movie.runtime || 120;
 
-      // 1. Vibe matching
+      // 1. Genre matching (Q1) — "any" / I don't care skips genre lock
+      if (tags.includes('comedy') && movie.genres.includes('Comedy')) score += 10;
+      if (tags.includes('thriller') && movie.genres.some((g) => ['Thriller', 'Crime', 'Mystery'].includes(g))) score += 10;
+      if (tags.includes('horror') && movie.genres.includes('Horror')) score += 12;
+      if (tags.includes('action') && movie.genres.some((g) => ['Action', 'Adventure'].includes(g))) score += 10;
+      if (tags.includes('romance') && movie.genres.includes('Romance')) score += 10;
+      if (
+        tags.includes('scifi') &&
+        movie.genres.some((g) => ['Science Fiction', 'Fantasy'].includes(g))
+      ) {
+        score += 10;
+      }
+      if (tags.includes('drama') && movie.genres.includes('Drama')) score += 8;
+      if (
+        tags.includes('animation') &&
+        movie.genres.some((g) => ['Animation', 'Family'].includes(g))
+      ) {
+        score += 10;
+      }
+      if (tags.includes('any')) {
+        // Help me pick: lean on highly rated crowd-pleasers, not a genre
+        score += Math.min(movie.vote_average, 8.5) * 0.35;
+        if (movie.vote_count && movie.vote_count > 2000) score += 2;
+      }
+
+      // Legacy vibe tags (if any older sessions)
       if (tags.includes('mind_bending')) {
         if (movie.genres.some((g) => ['Science Fiction', 'Mystery', 'Thriller'].includes(g))) score += 7;
         if (/reality|mind|simulation|dream|dimension|space|memory|time/i.test(movieText)) score += 5;
-      }
-      if (tags.includes('action')) {
-        if (movie.genres.some((g) => ['Action', 'Adventure'].includes(g))) score += 7;
-        if (/chase|war|fight|danger|mission|fury|speed/i.test(movieText)) score += 4;
-      }
-      if (tags.includes('drama')) {
-        if (movie.genres.some((g) => ['Drama', 'Romance'].includes(g))) score += 7;
-        if (/love|relationship|melancholy|heart|family|lonely/i.test(movieText)) score += 4;
-      }
-      if (tags.includes('thriller')) {
-        if (movie.genres.some((g) => ['Thriller', 'Crime', 'Mystery'].includes(g))) score += 7;
-        if (/detective|murder|killer|investigation|secret|conspiracy/i.test(movieText)) score += 5;
-      }
-      if (tags.includes('comedy')) {
-        if (movie.genres.includes('Comedy')) score += 8;
       }
       if (tags.includes('uplifting')) {
         if (movie.genres.some((g) => ['Animation', 'Family', 'Drama'].includes(g))) score += 6;
@@ -311,23 +335,38 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
       // 4. Setting matching
       if (tags.includes('space') && (movie.genres.includes('Science Fiction') || /space|wormhole|star|galaxy/i.test(movieText))) score += 6;
       if (tags.includes('neon_noir') && (movieText.includes('blade') || movieText.includes('future') || movieText.includes('cyber'))) score += 6;
+      if (tags.includes('cabin') && /cabin|forest|woods|isolated|wilderness/i.test(movieText)) score += 5;
+      if (tags.includes('summer') && /summer|beach|coast|sun|vacation/i.test(movieText)) score += 5;
 
       // 5. Narrative goal
       if (tags.includes('shock') && (movieText.includes('twist') || movie.genres.includes('Mystery') || movie.vote_average >= 8.2)) score += 4;
       if (tags.includes('hype') && movie.genres.includes('Action')) score += 5;
+      if (tags.includes('emotional') && movie.genres.includes('Drama')) score += 4;
+      if (tags.includes('relax') && !movie.genres.includes('Horror')) score += 3;
+
+      // Dealbreakers
+      if (tags.includes('no_gore') && movie.genres.includes('Horror')) score -= 12;
+      if (tags.includes('no_tragedy') && /tragic|death|suicide|grief/i.test(movieText)) score -= 6;
+      if (tags.includes('no_cliches') && movie.genres.includes('Romance')) score -= 4;
 
       return { movie, score };
     });
 
     scored.sort((a, b) => b.score - a.score);
     const topPicks = scored.slice(0, 4).map((item) => {
-      const topTag = tags[0];
-      let reason = 'Top match for your taste';
-      if (topTag === 'mind_bending') reason = 'Mind-bending & existential journey';
-      else if (topTag === 'action') reason = 'High-octane adrenaline rush';
-      else if (topTag === 'drama') reason = 'Cozy, poignant & thoughtfully crafted';
-      else if (topTag === 'thriller') reason = 'Dark, razor-sharp tension';
-      else if (topTag === 'comedy') reason = 'Laugh-out-loud escapism';
+      const genreTag = tags.find((t) =>
+        ['comedy', 'thriller', 'horror', 'action', 'romance', 'scifi', 'drama', 'animation', 'any'].includes(t)
+      );
+      let reason = 'Strong match for tonight';
+      if (genreTag === 'comedy') reason = 'Comedy pick for tonight';
+      else if (genreTag === 'thriller') reason = 'Thriller / tension match';
+      else if (genreTag === 'horror') reason = 'Horror match';
+      else if (genreTag === 'action') reason = 'Action / adrenaline match';
+      else if (genreTag === 'romance') reason = 'Romance match';
+      else if (genreTag === 'scifi') reason = 'Sci-fi / fantasy match';
+      else if (genreTag === 'drama') reason = 'Drama match';
+      else if (genreTag === 'animation') reason = 'Animation / family match';
+      else if (genreTag === 'any') reason = 'Open-ended pick while we learn your mood';
 
       return {
         ...item.movie,
@@ -722,6 +761,7 @@ Recommend the top 3 tailored movie picks. For each pick, give the exact title, r
           <div className="flex-1 my-3 flex flex-col justify-center gap-1.5 sm:gap-2 min-h-0 overflow-y-auto pr-0.5">
             {currentQ.options.map((opt) => {
               const isSelected = answers[currentStep]?.tag === opt.tag;
+              const isDontCare = opt.tag === 'any' || opt.tag.endsWith('_any');
               return (
                 <button
                   key={opt.tag}
@@ -729,7 +769,9 @@ Recommend the top 3 tailored movie picks. For each pick, give the exact title, r
                   className={`w-full text-left py-2.5 px-3.5 rounded-xl border text-xs sm:text-sm font-medium transition-all duration-150 flex items-center justify-between group ${
                     isSelected
                       ? 'bg-amber-500/20 border-amber-500 text-white shadow-md'
-                      : 'bg-neutral-950/60 border-neutral-800/90 text-neutral-200 hover:border-neutral-700 hover:bg-neutral-800/80 hover:text-white'
+                      : isDontCare
+                        ? 'bg-neutral-950/40 border-dashed border-neutral-600 text-neutral-300 hover:border-amber-500/50 hover:text-white'
+                        : 'bg-neutral-950/60 border-neutral-800/90 text-neutral-200 hover:border-neutral-700 hover:bg-neutral-800/80 hover:text-white'
                   }`}
                 >
                   <div className="flex items-center gap-2.5 truncate">
