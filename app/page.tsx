@@ -15,6 +15,7 @@ import { MovieDetailModal } from '@/components/movie/MovieDetailModal';
 import { TwentyQuestionsMode } from '@/components/modes/TwentyQuestionsMode';
 import { ChatMode } from '@/components/modes/ChatMode';
 import { ShelfMode } from '@/components/modes/ShelfMode';
+import { MovieFinderWizard } from '@/components/modes/MovieFinderWizard';
 
 // Layouts
 import { MobileLayout } from '@/components/layout/MobileLayout';
@@ -33,13 +34,15 @@ export default function Home() {
   const [geminiApiKey, setGeminiApiKey] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
+  const [isFinderOpen, setIsFinderOpen] = useState(false);
 
-  // WebLLM Loading Progress State
+  // WebLLM Loading Progress State (starts in instant engine mode — local AI download is opt-in)
   const [webllmProgress, setWebllmProgress] = useState<WebLLMProgress>({
-    progress: 0,
-    text: 'Initializing...',
-    isLoaded: false,
-    isLoading: true,
+    progress: 1,
+    text: 'Instant Engine Active',
+    isLoaded: true,
+    isLoading: false,
+    usingFallback: true,
   });
 
   // Responsive device detector
@@ -76,8 +79,8 @@ export default function Home() {
       setWebllmProgress(p);
     });
 
-    // Start loading WebLLM engine
-    webllmEngine.initEngine().catch(() => {});
+    // Start with Instant Cinephile Engine — WebLLM download is opt-in via Settings
+    webllmEngine.enableFallback('Instant Engine Active (Zero Wait)');
 
     // User lands directly on the Movie Vault (Cine-Shelf)
 
@@ -203,6 +206,7 @@ export default function Home() {
             isSearchOpen={isMobileSearchOpen}
             onOpenSearch={() => setIsMobileSearchOpen(true)}
             onCloseSearch={() => setIsMobileSearchOpen(false)}
+            onOpenFinder={() => setIsFinderOpen(true)}
           />
         );
     }
@@ -304,6 +308,13 @@ export default function Home() {
         ratedCount={ratedCount}
         onInstantReady={() => webllmEngine.enableFallback()}
         onRetryDownload={() => webllmEngine.initEngine()}
+      />
+
+      {/* 20Q Movie Finder Wizard */}
+      <MovieFinderWizard
+        isOpen={isFinderOpen}
+        onClose={() => setIsFinderOpen(false)}
+        onSelectMovie={handleSelectMovie}
       />
 
       {/* Settings Modal */}

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Heart, Bookmark, Compass, Search, Flame, Award, TrendingUp, Loader2, Sparkles, ArrowUpDown, Calendar, X, Check, Disc, Ticket, Eye } from 'lucide-react';
+import { Heart, Bookmark, Compass, Search, Flame, Award, TrendingUp, Loader2, Sparkles, ArrowUpDown, Calendar, X, Check, Disc, Ticket, Eye, Clapperboard } from 'lucide-react';
 import { Movie, ReleaseFormat } from '@/lib/tmdb/types';
 import { tmdb, GENRE_NAME_TO_ID } from '@/lib/tmdb/client';
 import { MovieCard } from '../movie/MovieCard';
@@ -24,6 +24,7 @@ interface ShelfModeProps {
   isSearchOpen?: boolean;
   onOpenSearch?: () => void;
   onCloseSearch?: () => void;
+  onOpenFinder?: () => void;
 }
 
 type TabType = 'trending' | 'popular' | 'netflix' | 'top_rated' | 'curated' | 'loved' | 'watchlist';
@@ -51,6 +52,7 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
   isSearchOpen: externalIsSearchOpen,
   onOpenSearch,
   onCloseSearch,
+  onOpenFinder,
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('trending');
   const [theatricalFilter, setTheatricalFilter] = useState<TheatricalFilter>('all');
@@ -413,6 +415,16 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
           <Search className="w-4 h-4 stroke-[2.5]" />
           <span>Search</span>
         </button>
+        {/* 20Q Movie Finder Wizard button */}
+        <button
+          type="button"
+          onClick={onOpenFinder}
+          title="Can't remember a movie? Let 20Q Movie Finder identify it!"
+          className="flex items-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r from-amber-500/20 to-neutral-900 border border-amber-500/40 hover:border-amber-400 hover:from-amber-500/30 text-amber-300 hover:text-white text-sm font-bold transition shrink-0 shadow"
+        >
+          <Clapperboard className="w-4 h-4 text-amber-400" />
+          <span>20Q Movie Finder</span>
+        </button>
       </form>
 
       {/* Top Shelf Navigation Tabs */}
@@ -538,6 +550,19 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
               <X className="w-4 h-4" />
             </button>
           </form>
+
+          {/* 20Q Movie Finder button on Mobile */}
+          <button
+            type="button"
+            onClick={() => {
+              setIsSearchOpen(false);
+              onOpenFinder?.();
+            }}
+            className="w-full my-2 py-2.5 px-3 rounded-xl bg-gradient-to-r from-amber-500/20 via-amber-600/15 to-neutral-900 border border-amber-500/40 text-amber-300 font-bold text-xs flex items-center justify-center gap-2 shadow shrink-0 active:scale-95 transition"
+          >
+            <Clapperboard className="w-4 h-4 text-amber-400" />
+            <span>Can&apos;t remember a movie? Try 20Q Finder</span>
+          </button>
 
           {/* Quick Filter Chips in Mobile Search */}
           <div className="py-2 flex items-center justify-between text-xs text-neutral-400 border-b border-neutral-900">
