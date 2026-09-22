@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { HelpCircle, MessageSquare, Compass, Film, Search, X } from 'lucide-react';
 import { AppMode } from '@/lib/tmdb/types';
 
@@ -12,6 +12,7 @@ interface MobileLayoutProps {
   onClearSearch?: () => void;
   onOpenSearch?: () => void;
   onOpenFinder?: () => void;
+  isFinderOpen?: boolean;
   children: React.ReactNode;
 }
 
@@ -23,13 +24,49 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
   onClearSearch,
   onOpenSearch,
   onOpenFinder,
+  isFinderOpen = false,
   children,
 }) => {
+  const [navVisible, setNavVisible] = useState(true);
+  const lastScrollTopRef = useRef(0);
+
+  // Hide bottom nav on scroll down inside any nested scroller; show on scroll up
+  useEffect(() => {
+    const onScroll = (e: Event) => {
+      const t = e.target;
+      if (!(t instanceof HTMLElement)) return;
+      // Ignore tiny non-scroll containers
+      if (t.scrollHeight <= t.clientHeight + 8) return;
+      const y = t.scrollTop;
+      const delta = y - lastScrollTopRef.current;
+      if (y < 40) {
+        setNavVisible(true);
+      } else if (delta > 10) {
+        setNavVisible(false);
+      } else if (delta < -10) {
+        setNavVisible(true);
+      }
+      lastScrollTopRef.current = y;
+    };
+    document.addEventListener('scroll', onScroll, true);
+    return () => document.removeEventListener('scroll', onScroll, true);
+  }, []);
+
+  // Finder open → treat as selected tab (show nav)
+  useEffect(() => {
+    if (isFinderOpen) setNavVisible(true);
+  }, [isFinderOpen]);
+
+  const tabClass = (active: boolean) =>
+    `flex flex-col items-center gap-1 py-1 px-2.5 rounded-xl transition ${
+      active ? 'text-amber-400 font-bold' : 'text-neutral-500 hover:text-neutral-300'
+    }`;
+
   return (
     <div className="min-h-screen pb-20 flex flex-col bg-neutral-950 text-white">
       {/* Mobile Top Bar */}
       <div className="px-3 py-2 border-b border-neutral-900 bg-neutral-950/95 sticky top-0 z-30 flex items-center gap-2">
-        {appMode === 'shelf' ? (
+        {appMode === 'shelf' && !isFinderOpen ? (
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -61,8 +98,10 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
         ) : (
           <span className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5 flex-1">
             <Film className="w-3.5 h-3.5" />
-            {appMode === 'twenty_questions' && 'Matchmaker'}
-            {appMode === 'chat' && 'Cinephile AI Chat'}
+            {isFinderOpen && '20Q Finder'}
+            {!isFinderOpen && appMode === 'twenty_questions' && 'Matchmaker'}
+            {!isFinderOpen && appMode === 'chat' && 'Cinephile AI Chat'}
+            {!isFinderOpen && appMode === 'shelf' && 'Movie Vault'}
           </span>
         )}
       </div>
@@ -70,48 +109,43 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
       {/* Main Content View */}
       <main className="flex-1 w-full">{children}</main>
 
-      {/* Native App-Style Bottom Navigation Bar */}
-      <div className="fixed bottom-0 left-0 right-0 z-40 bg-neutral-950/95 border-t border-neutral-800 backdrop-blur-xl px-2 py-2 flex items-center justify-around shadow-2xl safe-area-pb">
+      {/* Bottom nav — above 20Q overlay; hides while scrolling down */}
+      <div
+        className={`fixed bottom-0 left-0 right-0 z-[80] bg-neutral-950/95 border-t border-neutral-800 backdrop-blur-xl px-2 py-2 flex items-center justify-around shadow-2xl safe-area-pb transition-transform duration-300 ease-out ${
+          navVisible ? 'translate-y-0' : 'translate-y-full'
+        }`}
+      >
         <button
+          type="button"
           onClick={() => onSelectAppMode('shelf')}
-          className={`flex flex-col items-center gap-1 py-1 px-2.5 rounded-xl transition ${
-            appMode === 'shelf'
-              ? 'text-amber-400 font-bold'
-              : 'text-neutral-500 hover:text-neutral-300'
-          }`}
+          className={tabClass(appMode === 'shelf' && !isFinderOpen)}
         >
           <Compass className="w-5 h-5" />
           <span className="text-[10px]">Vault</span>
         </button>
 
-        {/* 20Q Movie Finder Tab in Mobile Bottom Bar */}
         <button
+          type="button"
           onClick={onOpenFinder}
-          className="flex flex-col items-center gap-1 py-1 px-2.5 rounded-xl text-amber-400/90 hover:text-amber-300 transition"
+          className={tabClass(isFinderOpen)}
         >
-          <Film className="w-5 h-5 text-amber-400 animate-pulse" />
-          <span className="text-[10px] font-bold text-amber-300">20Q Finder</span>
+          <Film className="w-5 h-5" />
+          <span className="text-[10px]">20Q Finder</span>
         </button>
 
         <button
+          type="button"
           onClick={() => onSelectAppMode('chat')}
-          className={`flex flex-col items-center gap-1 py-1 px-2.5 rounded-xl transition ${
-            appMode === 'chat'
-              ? 'text-amber-400 font-bold'
-              : 'text-neutral-500 hover:text-neutral-300'
-          }`}
+          className={tabClass(appMode === 'chat' && !isFinderOpen)}
         >
           <MessageSquare className="w-5 h-5" />
           <span className="text-[10px]">Ask AI</span>
         </button>
 
         <button
+          type="button"
           onClick={() => onSelectAppMode('twenty_questions')}
-          className={`flex flex-col items-center gap-1 py-1 px-2.5 rounded-xl transition ${
-            appMode === 'twenty_questions'
-              ? 'text-amber-400 font-bold'
-              : 'text-neutral-500 hover:text-neutral-300'
-          }`}
+          className={tabClass(appMode === 'twenty_questions' && !isFinderOpen)}
         >
           <HelpCircle className="w-5 h-5" />
           <span className="text-[10px]">Matchmaker</span>

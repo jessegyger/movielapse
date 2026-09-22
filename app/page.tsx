@@ -81,13 +81,15 @@ export default function Home() {
 
   const handleSelectAppMode = useCallback(
     (mode: AppMode) => {
+      if (isFinderOpen) {
+        if (!backIfLayer('finder')) closeFinder();
+      }
       if (mode === store.appMode) return;
 
       if (mode === 'shelf') {
-        // Pop the mode history entry so Back doesn't immediately leave the site
         if (typeof window !== 'undefined' && isNavState(window.history.state) && window.history.state.layer === 'mode') {
           window.history.back();
-          return; // popstate sets shelf
+          return;
         }
         store.setAppMode('shelf');
         return;
@@ -100,7 +102,7 @@ export default function Home() {
       }
       store.setAppMode(mode);
     },
-    [store]
+    [store, isFinderOpen, closeFinder]
   );
 
   const handlePlayTrailer = async (movie: Movie) => {
@@ -311,6 +313,7 @@ export default function Home() {
           onClearSearch={() => setSearchQuery('')}
           onOpenSearch={openSearch}
           onOpenFinder={openFinder}
+          isFinderOpen={isFinderOpen}
         >
           {renderModeContent()}
         </MobileLayout>

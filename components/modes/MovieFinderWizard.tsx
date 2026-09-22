@@ -773,7 +773,7 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[70] bg-black/95 backdrop-blur-xl flex flex-col items-center animate-fade-in overflow-hidden overscroll-contain">
+    <div className="fixed inset-x-0 top-0 bottom-16 md:inset-0 z-[70] bg-black/95 backdrop-blur-xl flex flex-col items-center animate-fade-in overflow-hidden overscroll-contain md:bottom-0">
       {/* Top Header Bar */}
       <div className="w-full max-w-5xl px-4 py-2.5 border-b border-neutral-800 flex items-center justify-between shrink-0 bg-neutral-950/90">
         <div className="flex items-center gap-2">
