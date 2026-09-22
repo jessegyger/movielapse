@@ -2,7 +2,7 @@
 
 import React, { useEffect } from 'react';
 import Image from 'next/image';
-import { X, Play, Heart, Bookmark, ThumbsDown, Tv, Ticket, ExternalLink, Calendar, Clock, Award, Users, Check } from 'lucide-react';
+import { X, Play, Heart, Bookmark, ThumbsDown, Tv, Ticket, ExternalLink, Calendar, Clock, Award, Users, Check, Eye } from 'lucide-react';
 import { Movie } from '@/lib/tmdb/types';
 
 interface MovieDetailModalProps {
@@ -195,59 +195,58 @@ export const MovieDetailModal: React.FC<MovieDetailModalProps> = ({
             </div>
           )}
 
-          {/* Quick Action Bar (Love, Dislike, Watchlist) */}
-          <div className="flex items-center gap-2 p-3 bg-neutral-950/70 border border-neutral-800/80 rounded-xl">
-            <span className="text-xs text-neutral-400 font-medium mr-auto">Your Taste:</span>
+          {/* Quick Action Bar (Seen, Love, Dislike, Watchlist) in 4-column balanced grid */}
+          <div className="grid grid-cols-4 gap-1.5 sm:gap-2 p-2 sm:p-2.5 bg-neutral-950/70 border border-neutral-800/80 rounded-xl">
             {onWatched && (
               <button
                 onClick={() => onWatched(movie)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                className={`flex items-center justify-center gap-1 sm:gap-1.5 py-2 px-1 rounded-lg text-xs font-semibold transition w-full ${
                   isWatched
-                    ? 'bg-emerald-500/20 border border-emerald-500/50 text-emerald-400'
-                    : 'bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-emerald-400 hover:bg-neutral-800'
+                    ? 'bg-amber-500/25 border border-amber-500/60 text-amber-300 shadow-sm'
+                    : 'bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-amber-400 hover:bg-neutral-800'
                 }`}
               >
-                <Check className={`w-3.5 h-3.5 ${isWatched ? 'stroke-[2.5]' : ''}`} />
-                <span>{isWatched ? 'Seen' : 'Seen it'}</span>
+                <Eye className={`w-3.5 h-3.5 ${isWatched ? 'fill-amber-400/40 text-amber-400' : ''}`} />
+                <span className="truncate">{isWatched ? 'Seen' : 'Seen'}</span>
               </button>
             )}
             {onLove && (
               <button
                 onClick={() => onLove(movie)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                className={`flex items-center justify-center gap-1 sm:gap-1.5 py-2 px-1 rounded-lg text-xs font-semibold transition w-full ${
                   isLoved
                     ? 'bg-red-500/20 border border-red-500/50 text-red-400'
                     : 'bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-red-400 hover:bg-neutral-800'
                 }`}
               >
                 <Heart className={`w-3.5 h-3.5 ${isLoved ? 'fill-current' : ''}`} />
-                <span>{isLoved ? 'Loved' : 'Love'}</span>
+                <span className="truncate">{isLoved ? 'Loved' : 'Love'}</span>
               </button>
             )}
             {onDislike && (
               <button
                 onClick={() => onDislike(movie)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                className={`flex items-center justify-center gap-1 sm:gap-1.5 py-2 px-1 rounded-lg text-xs font-semibold transition w-full ${
                   isDisliked
                     ? 'bg-neutral-700 border border-neutral-600 text-neutral-200'
                     : 'bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-neutral-100 hover:bg-neutral-800'
                 }`}
               >
                 <ThumbsDown className={`w-3.5 h-3.5 ${isDisliked ? 'fill-current' : ''}`} />
-                <span>{isDisliked ? 'Disliked' : 'Dislike'}</span>
+                <span className="truncate">{isDisliked ? 'Disliked' : 'Dislike'}</span>
               </button>
             )}
             {onWatchlist && (
               <button
                 onClick={() => onWatchlist(movie)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                className={`flex items-center justify-center gap-1 sm:gap-1.5 py-2 px-1 rounded-lg text-xs font-semibold transition w-full ${
                   isWatchlist
                     ? 'bg-amber-500/20 border border-amber-500/50 text-amber-400'
                     : 'bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-amber-400 hover:bg-neutral-800'
                 }`}
               >
                 <Bookmark className={`w-3.5 h-3.5 ${isWatchlist ? 'fill-current' : ''}`} />
-                <span>{isWatchlist ? 'Saved' : 'Watchlist'}</span>
+                <span className="truncate">{isWatchlist ? 'Saved' : 'Watchlist'}</span>
               </button>
             )}
           </div>

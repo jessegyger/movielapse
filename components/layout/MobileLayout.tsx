@@ -12,6 +12,7 @@ interface MobileLayoutProps {
   searchQuery?: string;
   onSearchChange?: (val: string) => void;
   onClearSearch?: () => void;
+  onOpenSearch?: () => void;
   children: React.ReactNode;
 }
 
@@ -23,12 +24,13 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
   searchQuery = '',
   onSearchChange,
   onClearSearch,
+  onOpenSearch,
   children,
 }) => {
   return (
     <div className="min-h-screen pb-20 flex flex-col bg-neutral-950 text-white">
       {/* Mobile Top Bar */}
-      <div className="px-3 py-2 border-b border-neutral-900 bg-neutral-950/95 sticky top-16 z-30 flex items-center gap-2">
+      <div className="px-3 py-2 border-b border-neutral-900 bg-neutral-950/95 sticky top-0 z-30 flex items-center gap-2">
         {appMode === 'shelf' ? (
           <form
             onSubmit={(e) => {
@@ -41,6 +43,8 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
             <input
               type="text"
               value={searchQuery}
+              onFocus={() => onOpenSearch?.()}
+              onClick={() => onOpenSearch?.()}
               onChange={(e) => onSearchChange?.(e.target.value)}
               placeholder="Search actor, director, title..."
               className="w-full pl-8 pr-7 py-1.5 rounded-xl bg-neutral-900 border border-neutral-800 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-amber-500 shadow-inner"

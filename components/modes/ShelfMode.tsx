@@ -21,6 +21,9 @@ interface ShelfModeProps {
   searchQuery?: string;
   onSearchChange?: (val: string) => void;
   onClearSearch?: () => void;
+  isSearchOpen?: boolean;
+  onOpenSearch?: () => void;
+  onCloseSearch?: () => void;
 }
 
 type TabType = 'trending' | 'popular' | 'netflix' | 'top_rated' | 'curated' | 'loved' | 'watchlist';
@@ -45,13 +48,22 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
   searchQuery: externalSearchQuery,
   onSearchChange,
   onClearSearch,
+  isSearchOpen: externalIsSearchOpen,
+  onOpenSearch,
+  onCloseSearch,
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('trending');
   const [theatricalFilter, setTheatricalFilter] = useState<TheatricalFilter>('all');
   const [watchedFilter, setWatchedFilter] = useState<WatchedFilter>('all');
   const [searchQuery, setSearchQuery] = useState(externalSearchQuery || '');
   const [searchedQuery, setSearchedQuery] = useState(externalSearchQuery || '');
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [internalSearchOpen, setInternalSearchOpen] = useState(false);
+  const isSearchOpen = externalIsSearchOpen !== undefined ? externalIsSearchOpen : internalSearchOpen;
+  const setIsSearchOpen = (val: boolean) => {
+    setInternalSearchOpen(val);
+    if (val) onOpenSearch?.();
+    else onCloseSearch?.();
+  };
   const [selectedGenre, setSelectedGenre] = useState<string>('All');
   const [sortBy, setSortBy] = useState<SortOption>('popularity.desc');
   const [selectedYear, setSelectedYear] = useState<YearOption>('All');
@@ -616,35 +628,16 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
         </div>
       )}
 
-      {/* Active Search Status Banner on Main Grid */}
-      {searchedQuery && (
-        <div className="mb-3 px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between text-xs">
-          <div className="flex items-center gap-2">
-            <span className="font-semibold text-amber-400 flex items-center gap-1">
-              <Check className="w-3.5 h-3.5 text-amber-400" /> Searched: &quot;{searchedQuery}&quot;
-            </span>
-            <span className="text-neutral-400">({filtered.length} movies found)</span>
-          </div>
-          <button
-            onClick={clearSearch}
-            className="text-neutral-400 hover:text-white flex items-center gap-1 font-medium underline"
-          >
-            Clear Search
-          </button>
-        </div>
-      )}
-
-      {/* Controls Bar: Sort, Era, and In-Theatres Toggle (All in one single compact line) */}
-      <div className="flex flex-wrap items-center justify-between gap-2.5 mb-3 p-2 rounded-xl bg-neutral-900/60 border border-neutral-800/80">
-        <div className="flex items-center gap-3 flex-wrap">
-          <div className="flex items-center gap-1.5 text-xs text-neutral-400">
-            <span className="flex items-center gap-1 font-semibold text-neutral-300">
-              <ArrowUpDown className="w-3.5 h-3.5 text-amber-400" /> Sort:
-            </span>
+      {/* Controls Bar: Sort, Era, Theatres, Seen (Compact 2-row on mobile, 1-row on desktop) */}
+      <div className="mb-3 p-2 rounded-xl bg-neutral-900/60 border border-neutral-800/80 flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+        {/* Mobile Row 1 / Desktop Left: Sort & Era dropdowns side-by-side */}
+        <div className="grid grid-cols-2 gap-2 md:flex md:items-center md:gap-3">
+          <div className="flex items-center gap-1.5 text-xs text-neutral-400 min-w-0">
+            <ArrowUpDown className="w-3.5 h-3.5 text-amber-400 shrink-0 hidden sm:inline" />
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as SortOption)}
-              className="bg-neutral-950 border border-neutral-800 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-amber-500 font-medium"
+              className="w-full md:w-auto bg-neutral-950 border border-neutral-800 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500 font-medium truncate"
             >
               <option value="popularity.desc">🔥 Most Popular</option>
               <option value="vote_average.desc">⭐ Highest Rating</option>
@@ -654,14 +647,12 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
             </select>
           </div>
 
-          <div className="flex items-center gap-1.5 text-xs text-neutral-400">
-            <span className="flex items-center gap-1 font-semibold text-neutral-300">
-              <Calendar className="w-3.5 h-3.5 text-amber-400" /> Era:
-            </span>
+          <div className="flex items-center gap-1.5 text-xs text-neutral-400 min-w-0">
+            <Calendar className="w-3.5 h-3.5 text-amber-400 shrink-0 hidden sm:inline" />
             <select
               value={selectedYear}
               onChange={(e) => setSelectedYear(e.target.value as YearOption)}
-              className="bg-neutral-950 border border-neutral-800 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-amber-500 font-medium"
+              className="w-full md:w-auto bg-neutral-950 border border-neutral-800 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500 font-medium truncate"
             >
               {years.map((y) => (
                 <option key={y.value} value={y.value}>
@@ -672,18 +663,19 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
           </div>
         </div>
 
-        {/* Filter Controls: Theatres & Watched/Seen toggles */}
-        <div className="flex items-center gap-3 flex-wrap">
-          {/* Super compact Theatres filter toggle (All / Off / Only) */}
-          <div className="flex items-center gap-1.5 text-xs">
-            <span className="text-neutral-400 font-semibold flex items-center gap-1 text-[11px]">
-              <Ticket className="w-3.5 h-3.5 text-red-400" /> Theatres:
+        {/* Mobile Row 2 / Desktop Right: Theatres & Seen Toggles side-by-side */}
+        <div className="grid grid-cols-2 gap-2 md:flex md:items-center md:gap-3">
+          {/* Theatres filter toggle (All / Off / Only) */}
+          <div className="flex items-center justify-between md:justify-start gap-1 text-xs">
+            <span className="text-neutral-400 font-semibold flex items-center gap-1 text-[11px] shrink-0" title="Theatres filter">
+              <Ticket className="w-3.5 h-3.5 text-red-400 shrink-0" />
+              <span className="hidden sm:inline">Theatres:</span>
             </span>
-            <div className="flex items-center p-0.5 rounded-lg bg-neutral-950 border border-neutral-800">
+            <div className="flex items-center p-0.5 rounded-lg bg-neutral-950 border border-neutral-800 w-full sm:w-auto justify-end">
               <button
                 onClick={() => handleTheatricalFilter('all')}
-                title="All: Show both cinema and streaming releases"
-                className={`px-2.5 py-0.5 rounded text-[11px] font-semibold transition ${
+                title="All: Show cinema and streaming releases"
+                className={`flex-1 sm:flex-initial px-2 py-0.5 rounded text-[11px] font-semibold text-center transition ${
                   theatricalFilter === 'all'
                     ? 'bg-neutral-800 text-white shadow'
                     : 'text-neutral-400 hover:text-white'
@@ -693,8 +685,8 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
               </button>
               <button
                 onClick={() => handleTheatricalFilter('hide_theatres')}
-                title="Off: Hide cinema releases (Streaming & At-Home only)"
-                className={`px-2.5 py-0.5 rounded text-[11px] font-semibold transition ${
+                title="Off: Hide cinema releases"
+                className={`flex-1 sm:flex-initial px-2 py-0.5 rounded text-[11px] font-semibold text-center transition ${
                   theatricalFilter === 'hide_theatres'
                     ? 'bg-amber-500 text-neutral-950 font-bold shadow'
                     : 'text-neutral-400 hover:text-white'
@@ -705,7 +697,7 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
               <button
                 onClick={() => handleTheatricalFilter('theatres_only')}
                 title="Only: Show in-theatre movies only"
-                className={`px-2.5 py-0.5 rounded text-[11px] font-semibold transition ${
+                className={`flex-1 sm:flex-initial px-2 py-0.5 rounded text-[11px] font-semibold text-center transition ${
                   theatricalFilter === 'theatres_only'
                     ? 'bg-red-600 text-white font-bold shadow'
                     : 'text-neutral-400 hover:text-white'
@@ -716,16 +708,17 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
             </div>
           </div>
 
-          {/* Super compact Watched / Seen filter toggle (All / Hide / Only) */}
-          <div className="flex items-center gap-1.5 text-xs">
-            <span className="text-neutral-400 font-semibold flex items-center gap-1 text-[11px]">
-              <Eye className="w-3.5 h-3.5 text-emerald-400" /> Seen:
+          {/* Seen filter toggle (All / Hide / Only) */}
+          <div className="flex items-center justify-between md:justify-start gap-1 text-xs">
+            <span className="text-neutral-400 font-semibold flex items-center gap-1 text-[11px] shrink-0" title="Seen filter">
+              <Eye className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <span className="hidden sm:inline">Seen:</span>
             </span>
-            <div className="flex items-center p-0.5 rounded-lg bg-neutral-950 border border-neutral-800">
+            <div className="flex items-center p-0.5 rounded-lg bg-neutral-950 border border-neutral-800 w-full sm:w-auto justify-end">
               <button
                 onClick={() => handleWatchedFilter('all')}
-                title="All: Show both seen and unseen movies"
-                className={`px-2.5 py-0.5 rounded text-[11px] font-semibold transition ${
+                title="All: Show seen and unseen"
+                className={`flex-1 sm:flex-initial px-2 py-0.5 rounded text-[11px] font-semibold text-center transition ${
                   watchedFilter === 'all'
                     ? 'bg-neutral-800 text-white shadow'
                     : 'text-neutral-400 hover:text-white'
@@ -735,8 +728,8 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
               </button>
               <button
                 onClick={() => handleWatchedFilter('hide_watched')}
-                title="Hide: Hide movies you have already seen"
-                className={`px-2.5 py-0.5 rounded text-[11px] font-semibold transition ${
+                title="Hide: Hide movies you've already seen"
+                className={`flex-1 sm:flex-initial px-2 py-0.5 rounded text-[11px] font-semibold text-center transition ${
                   watchedFilter === 'hide_watched'
                     ? 'bg-amber-500 text-neutral-950 font-bold shadow'
                     : 'text-neutral-400 hover:text-white'
@@ -746,10 +739,10 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
               </button>
               <button
                 onClick={() => handleWatchedFilter('watched_only')}
-                title="Only: Show only movies you have seen"
-                className={`px-2.5 py-0.5 rounded text-[11px] font-semibold transition ${
+                title="Only: Show only movies you've seen"
+                className={`flex-1 sm:flex-initial px-2 py-0.5 rounded text-[11px] font-semibold text-center transition ${
                   watchedFilter === 'watched_only'
-                    ? 'bg-emerald-600 text-white font-bold shadow'
+                    ? 'bg-amber-500 text-neutral-950 font-bold shadow'
                     : 'text-neutral-400 hover:text-white'
                 }`}
               >

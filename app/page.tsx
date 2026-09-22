@@ -32,6 +32,7 @@ export default function Home() {
   const [seedMovies, setSeedMovies] = useState<Movie[]>([]);
   const [geminiApiKey, setGeminiApiKey] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
 
   // WebLLM Loading Progress State
   const [webllmProgress, setWebllmProgress] = useState<WebLLMProgress>({
@@ -199,6 +200,9 @@ export default function Home() {
             searchQuery={searchQuery}
             onSearchChange={setSearchQuery}
             onClearSearch={() => setSearchQuery('')}
+            isSearchOpen={isMobileSearchOpen}
+            onOpenSearch={() => setIsMobileSearchOpen(true)}
+            onCloseSearch={() => setIsMobileSearchOpen(false)}
           />
         );
     }
@@ -228,6 +232,7 @@ export default function Home() {
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
           onClearSearch={() => setSearchQuery('')}
+          onOpenSearch={() => setIsMobileSearchOpen(true)}
         >
           {renderModeContent()}
         </MobileLayout>

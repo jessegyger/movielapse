@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import Image from 'next/image';
-import { Play, Heart, ThumbsDown, Bookmark, Sparkles, Tv, Ticket, Info, Check } from 'lucide-react';
+import { Play, Heart, ThumbsDown, Bookmark, Sparkles, Tv, Ticket, Info, Check, Eye } from 'lucide-react';
 import { Movie } from '@/lib/tmdb/types';
 
 interface MovieCardProps {
@@ -303,15 +303,14 @@ export const MovieCard: React.FC<MovieCardProps> = ({
                 e.stopPropagation();
                 onWatched(movie);
               }}
-              title={isWatched ? "Marked as seen - click to unmark" : "I've seen this movie"}
-              className={`text-xs font-semibold flex items-center gap-1.5 px-2.5 py-1 rounded-lg transition-all active:scale-95 ${
+              title={isWatched ? "Seen (click to unmark)" : "Mark as seen"}
+              className={`p-1.5 rounded-lg transition-all active:scale-95 flex items-center justify-center ${
                 isWatched
-                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shadow-sm'
-                  : 'bg-neutral-800/80 text-neutral-400 hover:text-white hover:bg-neutral-750 border border-neutral-700/60'
+                  ? 'text-amber-400 bg-amber-500/25 border border-amber-500/50 shadow-sm'
+                  : 'text-neutral-400 hover:text-amber-400 hover:bg-neutral-800 border border-transparent'
               }`}
             >
-              <Check className={`w-3.5 h-3.5 stroke-[2.5] ${isWatched ? 'text-emerald-400' : 'text-neutral-400'}`} />
-              <span>{isWatched ? 'Seen' : 'Seen it'}</span>
+              <Eye className={`w-4 h-4 ${isWatched ? 'fill-amber-400/40 text-amber-400' : ''}`} />
             </button>
           ) : (
             <div />
