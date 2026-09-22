@@ -9,14 +9,14 @@ import {
   Minus,
   XCircle,
   HelpCircle,
-  Sparkles,
   Search,
   Globe2,
   Loader2,
   ChevronDown,
   Building2,
   Calendar,
-  Film
+  Sparkles,
+  SlidersHorizontal
 } from 'lucide-react';
 import { Movie } from '@/lib/tmdb/types';
 import {
@@ -30,7 +30,6 @@ import {
   WizardAnswer,
   ScoredMovie,
   POPULAR_STUDIOS,
-  DECADE_OPTIONS,
 } from '@/lib/tmdb/movieFinder';
 
 interface MovieFinderWizardProps {
@@ -40,6 +39,16 @@ interface MovieFinderWizardProps {
 }
 
 const MAX_QUESTIONS = 20;
+
+const OPTIONAL_ERA_CLUES = [
+  { label: 'Before 2010', lte: '2009-12-31' },
+  { label: 'After 2000', gte: '2001-01-01' },
+  { label: '2010s', gte: '2010-01-01', lte: '2019-12-31' },
+  { label: '2000s', gte: '2000-01-01', lte: '2009-12-31' },
+  { label: '1990s', gte: '1990-01-01', lte: '1999-12-31' },
+  { label: '1980s', gte: '1980-01-01', lte: '1989-12-31' },
+  { label: 'Pre-1980', lte: '1979-12-31' },
+];
 
 export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
   isOpen,
@@ -54,14 +63,19 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
   const [questionCount, setQuestionCount] = useState(0);
   const [history, setHistory] = useState<{ q: WizardQuestion; answer: WizardAnswer }[]>([]);
   const [clueMatches, setClueMatches] = useState<Set<string>>(new Set());
+  const [hasAnsweredEra, setHasAnsweredEra] = useState<boolean>(false);
 
+  // Optional clue inputs (user can use these or completely ignore them)
+  const [showOptionalHelpers, setShowOptionalHelpers] = useState(true);
+  const [selectedOptionalStudio, setSelectedOptionalStudio] = useState<string>('');
+  const [selectedOptionalEra, setSelectedOptionalEra] = useState<string>('');
   const [clueText, setClueText] = useState('');
   const [filterWithinText, setFilterWithinText] = useState('');
   const [isQueryingTMDb, setIsQueryingTMDb] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
 
-  // Fix body scrolling so mouse wheel inside modal NEVER scrolls the page behind
+  // Prevent background body scroll leak
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = 'hidden';
@@ -79,6 +93,9 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
 
     setClueText('');
     setFilterWithinText('');
+    setSelectedOptionalStudio('');
+    setSelectedOptionalEra('');
+    setHasAnsweredEra(false);
     setCurrentPage(1);
 
     const initFilters = createInitialFilters();
@@ -119,7 +136,8 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
       updatedHistory: { q: WizardQuestion; answer: WizardAnswer }[],
       updatedAskedIds: Set<string>,
       updatedClueMatches: Set<string>,
-      newCount: number
+      newCount: number,
+      eraAnswered: boolean
     ) => {
       setIsQueryingTMDb(true);
       setCurrentPage(1);
@@ -134,9 +152,9 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
       setScoredPool(scored);
       setIsQueryingTMDb(false);
 
-      // Pick the next question using the updated set of asked IDs (NO double-asking bug!)
+      // Advance to next question using updatedAskedIds (resolves double-click bug)
       if (newCount < MAX_QUESTIONS) {
-        const nextQ = selectNextQuestion(scored, updatedAskedIds, true);
+        const nextQ = selectNextQuestion(scored, updatedAskedIds, eraAnswered);
         setCurrentQuestion(nextQ || null);
       } else {
         setCurrentQuestion(null);
@@ -145,7 +163,7 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
     [allMovies]
   );
 
-  // Handle standard Yes / Sometimes / Not sure / No answers
+  // 100% Yes / Sometimes / Not sure / No answers for all questions
   const handleAnswer = useCallback(
     async (answer: WizardAnswer) => {
       if (!currentQuestion) return;
@@ -163,6 +181,8 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
         with_original_language: filters.with_original_language,
       };
 
+      let eraAnswered = hasAnsweredEra;
+
       if (answer === 'yes' && currentQuestion.onYes) {
         const u = currentQuestion.onYes;
         if (u.with_genres) u.with_genres.split(',').forEach((g) => nextFilters.with_genres.add(g));
@@ -173,15 +193,21 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
         if (u.primary_release_date_lte) nextFilters.primary_release_date_lte = u.primary_release_date_lte;
         if (u.vote_count_gte) nextFilters.vote_count_gte = u.vote_count_gte;
         if (u.vote_average_gte) nextFilters.vote_average_gte = u.vote_average_gte;
+        if (currentQuestion.isEra) eraAnswered = true;
       } else if (answer === 'no' && currentQuestion.onNo) {
         const u = currentQuestion.onNo;
         if (u.without_genres) u.without_genres.split(',').forEach((g) => nextFilters.without_genres.add(g));
         if (u.without_keywords) u.without_keywords.split(',').forEach((k) => nextFilters.without_keywords.add(k));
         if (u.primary_release_date_gte) nextFilters.primary_release_date_gte = u.primary_release_date_gte;
         if (u.primary_release_date_lte) nextFilters.primary_release_date_lte = u.primary_release_date_lte;
+        if (currentQuestion.isEra) eraAnswered = true;
+      } else if (answer === 'skip' && currentQuestion.isEra) {
+        // If user says "Not sure" to an era, never ask about eras again
+        eraAnswered = true;
       }
 
       setFilters(nextFilters);
+      setHasAnsweredEra(eraAnswered);
 
       const newHistory = [...history, { q: currentQuestion, answer }];
       const newAsked = new Set(askedIds);
@@ -192,110 +218,37 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
       setAskedIds(newAsked);
       setQuestionCount(newCount);
 
-      // Execute live query and advance question using newAsked directly
-      executeLiveQueryWithFilters(nextFilters, newHistory, newAsked, clueMatches, newCount);
+      // Execute live query immediately (no double-click needed!)
+      executeLiveQueryWithFilters(nextFilters, newHistory, newAsked, clueMatches, newCount, eraAnswered);
     },
-    [currentQuestion, filters, history, askedIds, questionCount, clueMatches, executeLiveQueryWithFilters]
+    [currentQuestion, filters, hasAnsweredEra, history, askedIds, questionCount, clueMatches, executeLiveQueryWithFilters]
   );
 
-  // Handle Multiple Choice: Decade Question
-  const handleMultipleChoiceDecade = (opt: { id: string; gte?: string; lte?: string }) => {
+  // Optional Extra Info: Click a studio chip if desired
+  const handleSelectOptionalStudio = (companyId: string, label: string) => {
+    setSelectedOptionalStudio(label);
+    const nextFilters: LiveDiscoverFilters = {
+      ...filters,
+      with_companies: companyId || undefined,
+    };
+    setFilters(nextFilters);
+    executeLiveQueryWithFilters(nextFilters, history, askedIds, clueMatches, questionCount, hasAnsweredEra);
+  };
+
+  // Optional Extra Info: Click an era chip if desired
+  const handleSelectOptionalEra = (opt: { label: string; gte?: string; lte?: string }) => {
+    setSelectedOptionalEra(opt.label);
     const nextFilters: LiveDiscoverFilters = {
       ...filters,
       primary_release_date_gte: opt.gte,
       primary_release_date_lte: opt.lte,
     };
     setFilters(nextFilters);
-
-    const dummyQ: WizardQuestion = {
-      id: 'mc_decade_' + opt.id,
-      question: 'Decade: ' + opt.id,
-      isEra: true,
-      match: (m) => {
-        if (!opt.gte && !opt.lte) return 0.5;
-        const y = Number(m.release_date?.slice(0, 4) || 0);
-        const gteY = opt.gte ? Number(opt.gte.slice(0, 4)) : 0;
-        const lteY = opt.lte ? Number(opt.lte.slice(0, 4)) : 9999;
-        return y >= gteY && y <= lteY ? 1.0 : 0.0;
-      },
-    };
-
-    const newHistory = [...history, { q: dummyQ, answer: 'yes' as WizardAnswer }];
-    const newAsked = new Set(askedIds);
-    newAsked.add(dummyQ.id);
-    const newCount = questionCount + 1;
-
-    setHistory(newHistory);
-    setAskedIds(newAsked);
-    setQuestionCount(newCount);
-
-    executeLiveQueryWithFilters(nextFilters, newHistory, newAsked, clueMatches, newCount);
+    setHasAnsweredEra(true);
+    executeLiveQueryWithFilters(nextFilters, history, askedIds, clueMatches, questionCount, true);
   };
 
-  // Handle Multiple Choice: Studio Question
-  const handleMultipleChoiceStudio = (opt: { id: string; companyId: string }) => {
-    const nextFilters: LiveDiscoverFilters = {
-      ...filters,
-      with_companies: opt.companyId || undefined,
-    };
-    setFilters(nextFilters);
-
-    const dummyQ: WizardQuestion = {
-      id: 'mc_studio_' + opt.id,
-      question: 'Studio: ' + opt.id,
-      match: (m) => {
-        if (!opt.companyId) return 0.5;
-        const t = `${m.title || ''} ${m.overview || ''}`.toLowerCase();
-        if (opt.id === 'disney' && (t.includes('disney') || t.includes('pixar'))) return 1.0;
-        return 0.5;
-      },
-    };
-
-    const newHistory = [...history, { q: dummyQ, answer: 'yes' as WizardAnswer }];
-    const newAsked = new Set(askedIds);
-    newAsked.add(dummyQ.id);
-    const newCount = questionCount + 1;
-
-    setHistory(newHistory);
-    setAskedIds(newAsked);
-    setQuestionCount(newCount);
-
-    executeLiveQueryWithFilters(nextFilters, newHistory, newAsked, clueMatches, newCount);
-  };
-
-  // Handle Multiple Choice: Format / Genre Question
-  const handleMultipleChoiceFormat = (opt: { id: string; genreId?: string }) => {
-    const nextFilters: LiveDiscoverFilters = {
-      ...filters,
-      with_genres: new Set(filters.with_genres),
-    };
-    if (opt.genreId) {
-      nextFilters.with_genres.add(opt.genreId);
-    }
-    setFilters(nextFilters);
-
-    const dummyQ: WizardQuestion = {
-      id: 'mc_format_' + opt.id,
-      question: 'Format: ' + opt.id,
-      match: (m) => {
-        if (!opt.genreId) return 0.5;
-        return m.genres?.some((g) => g.toLowerCase().includes(opt.id)) ? 1.0 : 0.0;
-      },
-    };
-
-    const newHistory = [...history, { q: dummyQ, answer: 'yes' as WizardAnswer }];
-    const newAsked = new Set(askedIds);
-    newAsked.add(dummyQ.id);
-    const newCount = questionCount + 1;
-
-    setHistory(newHistory);
-    setAskedIds(newAsked);
-    setQuestionCount(newCount);
-
-    executeLiveQueryWithFilters(nextFilters, newHistory, newAsked, clueMatches, newCount);
-  };
-
-  // Live Clue Search (actor, keyword, character) across TMDB
+  // Optional Extra Info: Search live TMDb by actor, keyword, or character
   const handleApplyClue = async (e: React.FormEvent) => {
     e.preventDefault();
     const clean = clueText.trim();
@@ -341,6 +294,9 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
   const handleReset = () => {
     setClueText('');
     setFilterWithinText('');
+    setSelectedOptionalStudio('');
+    setSelectedOptionalEra('');
+    setHasAnsweredEra(false);
     setCurrentPage(1);
 
     const initFilters = createInitialFilters();
@@ -367,13 +323,14 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
 
   // ── ACTIVE NARROWING: Only display movies that positively match answers! ──
   const qualifyingScored = useMemo(() => {
-    if (questionCount === 0) return scoredPool;
+    if (questionCount === 0 && !selectedOptionalStudio && !selectedOptionalEra && clueMatches.size === 0) {
+      return scoredPool;
+    }
     // Keep movies with positive score (score >= 0.5)
     const threshold = 0.5;
     const filtered = scoredPool.filter((s) => s.score >= threshold);
-    // If pool would be empty, show the top 8 highest scoring
     return filtered.length > 0 ? filtered : scoredPool.slice(0, 8);
-  }, [scoredPool, questionCount]);
+  }, [scoredPool, questionCount, selectedOptionalStudio, selectedOptionalEra, clueMatches]);
 
   // Filter within current results for quick title testing
   const displayedCandidates = useMemo(() => {
@@ -393,7 +350,7 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
   return (
     <div className="fixed inset-0 z-[70] bg-black/95 backdrop-blur-xl flex flex-col items-center animate-fade-in overflow-hidden overscroll-contain">
       {/* Top Header Bar */}
-      <div className="w-full max-w-6xl px-4 py-3 border-b border-neutral-800 flex items-center justify-between shrink-0 bg-neutral-950/80">
+      <div className="w-full max-w-5xl px-4 py-3 border-b border-neutral-800 flex items-center justify-between shrink-0 bg-neutral-950/80">
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shadow-sm">
             <Clapperboard className="w-4 h-4" />
@@ -406,7 +363,7 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
               </span>
             </div>
             <p className="text-neutral-500 text-[11px] hidden sm:block">
-              20 Questions elimination — searching all 1,000,000+ movies live
+              Answer Yes or No to narrow down all 1,000,000+ movies
             </p>
           </div>
         </div>
@@ -431,19 +388,19 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
       </div>
 
       {/* Main Scrollable Body */}
-      <div className="flex-1 w-full max-w-6xl overflow-y-auto px-4 py-4 space-y-4 overscroll-contain">
-        {/* ── QUESTION CARD ── */}
+      <div className="flex-1 w-full max-w-5xl overflow-y-auto px-4 py-4 space-y-4 overscroll-contain">
+        {/* ── 100% YES OR NO QUESTION CARD (PRIMARY INTERFACE) ── */}
         <div className="bg-gradient-to-b from-neutral-900 to-neutral-950 border border-neutral-800 rounded-3xl p-5 sm:p-7 text-center shadow-xl relative overflow-hidden">
           {/* Header & Match Counter */}
-          <div className="flex items-center justify-between text-xs text-neutral-400 mb-2">
+          <div className="flex items-center justify-between text-xs text-neutral-400 mb-3">
             <span className="font-bold text-amber-400 uppercase tracking-widest text-[11px]">
               Question {Math.min(questionCount + 1, MAX_QUESTIONS)} of {MAX_QUESTIONS}
             </span>
             <span className="flex items-center gap-1.5 font-medium">
               {isQueryingTMDb ? (
                 <>
-                  <Loader2 className="w-3 h-3 animate-spin text-amber-400" />
-                  <span className="text-amber-400">Searching live TMDb...</span>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400" />
+                  <span className="text-amber-400">Narrowing TMDb...</span>
                 </>
               ) : (
                 <>
@@ -456,110 +413,9 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
             </span>
           </div>
 
-          {/* ── STEP 1: DECADE MULTIPLE CHOICE BOXES ── */}
-          {questionCount === 0 && (
-            <div className="space-y-4 max-w-2xl mx-auto py-2">
-              <div className="flex items-center justify-center gap-2 text-amber-400 text-xs font-bold uppercase tracking-wider">
-                <Calendar className="w-4 h-4" />
-                <span>Step 1: Choose Era (Multiple Choice)</span>
-              </div>
-              <h2 className="text-white text-xl sm:text-2xl font-extrabold tracking-tight">
-                Roughly what decade was your movie made?
-              </h2>
-              <p className="text-neutral-400 text-xs sm:text-sm">
-                Pick a decade, or skip if you aren&apos;t sure!
-              </p>
-
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-2">
-                {DECADE_OPTIONS.map((d) => (
-                  <button
-                    key={d.id}
-                    disabled={isQueryingTMDb}
-                    onClick={() => handleMultipleChoiceDecade(d)}
-                    className="p-3.5 rounded-2xl bg-neutral-950 border border-neutral-800 hover:border-amber-400 hover:bg-neutral-900 text-white font-bold text-sm transition active:scale-95 shadow disabled:opacity-50 flex flex-col items-center justify-center gap-1"
-                  >
-                    <span className="text-base sm:text-lg">{d.label}</span>
-                    <span className="text-[10px] text-neutral-500 font-normal">
-                      {d.id === 'all' ? 'Skip era' : d.id === 'classics' ? 'Pre-1980' : `${d.label}`}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* ── STEP 2: STUDIO / FRANCHISE MULTIPLE CHOICE BOXES ── */}
-          {questionCount === 1 && (
-            <div className="space-y-4 max-w-2xl mx-auto py-2">
-              <div className="flex items-center justify-center gap-2 text-amber-400 text-xs font-bold uppercase tracking-wider">
-                <Building2 className="w-4 h-4" />
-                <span>Step 2: Studio or Universe (Multiple Choice)</span>
-              </div>
-              <h2 className="text-white text-xl sm:text-2xl font-extrabold tracking-tight">
-                Is it from a specific studio, brand, or franchise?
-              </h2>
-              <p className="text-neutral-400 text-xs sm:text-sm">
-                Thinking of a Disney movie? Click Disney &amp; Pixar below!
-              </p>
-
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 pt-2">
-                {POPULAR_STUDIOS.map((s) => (
-                  <button
-                    key={s.id}
-                    disabled={isQueryingTMDb}
-                    onClick={() => handleMultipleChoiceStudio(s)}
-                    className={`p-3.5 rounded-2xl border font-bold text-sm transition active:scale-95 shadow disabled:opacity-50 flex flex-col items-center justify-center gap-1 ${
-                      s.id === 'disney'
-                        ? 'bg-blue-950/60 border-blue-500/60 hover:border-blue-400 text-blue-200 hover:bg-blue-900/60'
-                        : 'bg-neutral-950 border-neutral-800 hover:border-amber-400 hover:bg-neutral-900 text-white'
-                    }`}
-                  >
-                    <span className="text-base sm:text-lg">{s.label}</span>
-                    <span className="text-[10px] text-neutral-400 font-normal">
-                      {s.id === 'disney' ? 'Walt Disney & Pixar' : s.id === 'all' ? 'Any / Independent' : s.label}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* ── STEP 3: FORMAT / PRIMARY VIBE MULTIPLE CHOICE BOXES ── */}
-          {questionCount === 2 && (
-            <div className="space-y-4 max-w-2xl mx-auto py-2">
-              <div className="flex items-center justify-center gap-2 text-amber-400 text-xs font-bold uppercase tracking-wider">
-                <Film className="w-4 h-4" />
-                <span>Step 3: Primary Type (Multiple Choice)</span>
-              </div>
-              <h2 className="text-white text-xl sm:text-2xl font-extrabold tracking-tight">
-                What type of movie is it primarily?
-              </h2>
-
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 pt-2">
-                {[
-                  { id: 'animation', label: '🎨 Animated / Cartoon', genreId: '16' },
-                  { id: 'action', label: '⚔️ Action & Adventure', genreId: '28' },
-                  { id: 'comedy', label: '😂 Laugh-out-loud Comedy', genreId: '35' },
-                  { id: 'scifi', label: '🚀 Sci-Fi or Fantasy', genreId: '878' },
-                  { id: 'horror', label: '😱 Horror or Thriller', genreId: '27' },
-                  { id: 'all', label: '🤷 Not sure / Any genre' },
-                ].map((f) => (
-                  <button
-                    key={f.id}
-                    disabled={isQueryingTMDb}
-                    onClick={() => handleMultipleChoiceFormat(f)}
-                    className="p-3.5 rounded-2xl bg-neutral-950 border border-neutral-800 hover:border-amber-400 hover:bg-neutral-900 text-white font-bold text-sm transition active:scale-95 shadow disabled:opacity-50 flex items-center justify-center text-center"
-                  >
-                    <span>{f.label}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* ── STEP 4+: YES / SOMETIMES / NOT SURE / NO QUESTIONS ── */}
-          {questionCount >= 3 && questionCount < MAX_QUESTIONS && currentQuestion && (
-            <div className="space-y-3 max-w-xl mx-auto py-1">
+          {/* Current Question Text */}
+          {questionCount < MAX_QUESTIONS && currentQuestion ? (
+            <div className="space-y-2 max-w-xl mx-auto py-2">
               <h2 className="text-white text-xl sm:text-2xl font-extrabold tracking-tight">
                 {currentQuestion.question}
               </h2>
@@ -567,8 +423,8 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
                 <p className="text-neutral-400 text-xs sm:text-sm">{currentQuestion.hint}</p>
               )}
 
-              {/* Answer Buttons — YES on left, NO on the FAR RIGHT! */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-3">
+              {/* 4 Answers: YES on Left, NO on the FAR RIGHT */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-4">
                 {/* 1. YES (Green) */}
                 <button
                   disabled={isQueryingTMDb}
@@ -610,10 +466,7 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
                 </button>
               </div>
             </div>
-          )}
-
-          {/* ── QUESTION 20 REACHED OR FULLY NARROWED ── */}
-          {questionCount >= MAX_QUESTIONS && (
+          ) : (
             <div className="py-2 space-y-2">
               <h2 className="text-white text-xl sm:text-2xl font-extrabold">
                 🎯 20 Questions Complete!
@@ -623,32 +476,89 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
               </p>
             </div>
           )}
-
-          {/* Dedicated Clue Search Input on the Question Card */}
-          <form
-            onSubmit={handleApplyClue}
-            className="flex items-center gap-2 max-w-xl mx-auto mt-5 pt-3 border-t border-neutral-800/80"
-          >
-            <div className="relative flex-1">
-              <Search className="w-3.5 h-3.5 text-neutral-500 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={clueText}
-                onChange={(e) => setClueText(e.target.value)}
-                placeholder="Remember a clue? (e.g. actor, character name, lamp, submarine)"
-                className="w-full pl-8 pr-3 py-2 rounded-xl bg-neutral-950 border border-neutral-800 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-amber-500"
-              />
-            </div>
-            <button
-              type="submit"
-              className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-neutral-950 text-xs font-bold transition shrink-0 shadow"
-            >
-              Add Clue
-            </button>
-          </form>
         </div>
 
-        {/* ── LIVE MATCHED MOVIES BROWSER (Showing ALL qualifying movies that meet search) ── */}
+        {/* ── OPTIONAL "GIVE EXTRA CLUES" AREA (NOT PRIMARY, PURELY OPTIONAL) ── */}
+        <div className="bg-neutral-900/80 border border-neutral-800/90 rounded-2xl p-3 sm:p-4 space-y-3 shadow-md">
+          <div className="flex items-center justify-between">
+            <span className="text-neutral-400 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
+              <SlidersHorizontal className="w-3.5 h-3.5 text-amber-400" />
+              <span>Optional Extra Clues (Know a hint? Click or type below):</span>
+            </span>
+            <button
+              onClick={() => setShowOptionalHelpers(!showOptionalHelpers)}
+              className="text-[11px] text-amber-400 hover:underline"
+            >
+              {showOptionalHelpers ? 'Hide Clues' : 'Show Clues'}
+            </button>
+          </div>
+
+          {showOptionalHelpers && (
+            <div className="space-y-2.5 pt-1 border-t border-neutral-800/70">
+              {/* Optional Studio chips */}
+              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                <span className="text-[11px] font-semibold text-neutral-500 shrink-0 mr-1 flex items-center gap-1">
+                  <Building2 className="w-3 h-3 text-amber-400" /> Studio:
+                </span>
+                {POPULAR_STUDIOS.filter((s) => s.id !== 'all').map((s) => (
+                  <button
+                    key={s.id}
+                    onClick={() => handleSelectOptionalStudio(s.companyId, s.label)}
+                    className={`px-2.5 py-1 rounded-xl text-xs font-semibold transition shrink-0 border ${
+                      selectedOptionalStudio === s.label
+                        ? 'bg-amber-500 text-neutral-950 border-amber-400 font-bold shadow'
+                        : 'bg-neutral-950 text-neutral-400 border-neutral-800 hover:text-white hover:border-neutral-700'
+                    }`}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Optional Era chips (includes broad "Before 2010", "After 2000") */}
+              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                <span className="text-[11px] font-semibold text-neutral-500 shrink-0 mr-1 flex items-center gap-1">
+                  <Calendar className="w-3 h-3 text-amber-400" /> Year:
+                </span>
+                {OPTIONAL_ERA_CLUES.map((d) => (
+                  <button
+                    key={d.label}
+                    onClick={() => handleSelectOptionalEra(d)}
+                    className={`px-2.5 py-1 rounded-xl text-xs font-semibold transition shrink-0 border ${
+                      selectedOptionalEra === d.label
+                        ? 'bg-amber-500 text-neutral-950 border-amber-400 font-bold shadow'
+                        : 'bg-neutral-950 text-neutral-400 border-neutral-800 hover:text-white hover:border-neutral-700'
+                    }`}
+                  >
+                    {d.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Optional keyword / actor search input */}
+              <form onSubmit={handleApplyClue} className="flex items-center gap-2 pt-1">
+                <div className="relative flex-1">
+                  <Search className="w-3.5 h-3.5 text-neutral-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={clueText}
+                    onChange={(e) => setClueText(e.target.value)}
+                    placeholder="Know a specific actor, character, or clue? (e.g. Robin Williams, magic lamp)"
+                    className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-neutral-950 border border-neutral-800 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-neutral-950 text-xs font-bold transition shrink-0 shadow"
+                >
+                  Add Clue
+                </button>
+              </form>
+            </div>
+          )}
+        </div>
+
+        {/* ── LIVE MATCHED MOVIES BROWSER (Actively narrowing down!) ── */}
         <div className="space-y-3 pt-2">
           {/* Subheader with title filter for instant testing */}
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 px-1">
@@ -660,7 +570,7 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
                 </span>
               </h3>
               <p className="text-neutral-400 text-xs mt-0.5">
-                Narrowing down with every question — click any movie to select it!
+                Narrowing with each Yes / No answer — click any movie anytime to select it!
               </p>
             </div>
 
