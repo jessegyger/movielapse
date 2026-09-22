@@ -75,7 +75,7 @@ export const MUTUAL_EXCLUSIONS: Record<string, string[]> = {
   war: ['animated', 'disney_pixar', 'theme_animated', 'theme_disney', 'theme_family_children', 'musical', 'theme_singing_songs', 'theme_animals', 'comedy', 'theme_humor_comedy', 'romance', 'theme_romance_love', 'animal_protagonist', 'theme_school_young'],
   thriller: ['animated', 'disney_pixar', 'theme_animated', 'theme_disney', 'theme_family_children', 'musical', 'theme_singing_songs', 'comedy', 'theme_humor_comedy', 'theme_animals', 'animal_protagonist'],
 
-  // Setting conflicts — space is NOT woods/ocean/school, etc.
+  // Setting conflicts — space is NOT woods/ocean/school/earth-adventure, etc.
   outer_space: [
     'theme_space_futuristic',
     'theme_forest_jungle',
@@ -84,8 +84,12 @@ export const MUTUAL_EXCLUSIONS: Record<string, string[]> = {
     'theme_royal_kingdom',
     'sports',
     'racing_cars',
+    'survival',
+    'spy',
+    'heist',
     'western',
     'cluster_genre_western',
+    'war',
   ],
   theme_space_futuristic: [
     'outer_space',
@@ -95,7 +99,11 @@ export const MUTUAL_EXCLUSIONS: Record<string, string[]> = {
     'theme_royal_kingdom',
     'sports',
     'racing_cars',
+    'survival',
+    'spy',
+    'heist',
     'western',
+    'war',
   ],
   theme_forest_jungle: [
     'outer_space',
@@ -108,8 +116,79 @@ export const MUTUAL_EXCLUSIONS: Record<string, string[]> = {
     'outer_space',
     'theme_space_futuristic',
     'theme_forest_jungle',
+    'scifi',
+    'cluster_genre_science_fiction',
   ],
   theme_royal_kingdom: ['outer_space', 'theme_space_futuristic', 'crime', 'war'],
+
+  // Sci-fi already known → skip earth-bound flavor questions
+  scifi: [
+    'theme_forest_jungle',
+    'theme_ocean_water',
+    'western',
+    'theme_school_young',
+    'sports',
+    'racing_cars',
+    'survival',
+    'spy',
+    'heist',
+    'war',
+    'theme_royal_kingdom',
+  ],
+  cluster_genre_science_fiction: [
+    'theme_forest_jungle',
+    'theme_ocean_water',
+    'outer_space',
+    'theme_space_futuristic',
+    'western',
+    'sports',
+    'racing_cars',
+    'survival',
+    'spy',
+    'heist',
+    'war',
+  ],
+
+  // Comedy known → skip bleak / earth-bound action flavors (esp. after space comedy)
+  comedy: [
+    'theme_humor_comedy',
+    'war',
+    'survival',
+    'spy',
+    'heist',
+    'sports',
+    'racing_cars',
+    'theme_ocean_water',
+    'theme_forest_jungle',
+    'western',
+    'theme_tone_dark',
+    'cluster_tone_dark',
+  ],
+  theme_humor_comedy: [
+    'comedy',
+    'war',
+    'survival',
+    'spy',
+    'heist',
+    'sports',
+    'racing_cars',
+    'theme_ocean_water',
+    'theme_forest_jungle',
+    'cluster_tone_dark',
+  ],
+  cluster_genre_comedy: [
+    'comedy',
+    'theme_humor_comedy',
+    'war',
+    'survival',
+    'spy',
+    'heist',
+    'sports',
+    'racing_cars',
+    'theme_ocean_water',
+    'theme_forest_jungle',
+    'cluster_tone_dark',
+  ],
 
   // Direct conceptual overlaps
   musical: ['theme_singing_songs'],
@@ -118,12 +197,8 @@ export const MUTUAL_EXCLUSIONS: Record<string, string[]> = {
   theme_magic_spells: ['fantasy_magic'],
   romance: ['theme_romance_love'],
   theme_romance_love: ['romance'],
-  comedy: ['theme_humor_comedy'],
-  theme_humor_comedy: ['comedy'],
   animal_protagonist: ['theme_animals'],
   theme_animals: ['animal_protagonist'],
-  scifi: ['theme_forest_jungle', 'western', 'theme_school_young'],
-  cluster_genre_science_fiction: ['theme_forest_jungle', 'theme_ocean_water', 'outer_space', 'theme_space_futuristic', 'western'],
 };
 
 export const EQUIVALENT_QUESTIONS: Record<string, string[]> = {
@@ -693,7 +768,8 @@ function isHardDropQuestion(q: WizardQuestion): boolean {
   if (
     q.id.startsWith('dyn_actor_') ||
     q.id.startsWith('probe_actor_') ||
-    q.id.startsWith('actor_face_')
+    q.id.startsWith('actor_face_') ||
+    q.id.startsWith('reject_actors_')
   ) {
     return true; // actor yes/no must actually eliminate
   }
@@ -703,8 +779,9 @@ function isHardDropQuestion(q: WizardQuestion): boolean {
 }
 
 /**
- * Hard Akinator constraints for era/genre only.
+ * Hard Akinator constraints for era/genre/actors.
  * "Sometimes" / "Don't know" never eliminate. Keyword settings never hard-drop.
+ * Actor Yes/No MUST remove titles — never leave #1 sitting there after a No.
  */
 export function filterPoolByHistory(
   movies: Movie[],
@@ -715,11 +792,55 @@ export function filterPoolByHistory(
     for (const { q, answer } of history) {
       if (!isHardDropQuestion(q)) continue;
       const match = q.match(m);
+      const isActor =
+        q.id.startsWith('dyn_actor_') ||
+        q.id.startsWith('probe_actor_') ||
+        q.id.startsWith('actor_face_');
+
+      if (isActor) {
+        // Binary: Yes keeps only movies with the actor; No removes every movie with them
+        if (answer === 'yes' && match < 0.5) return false;
+        if (answer === 'no' && match >= 0.5) return false;
+        continue;
+      }
+
       if (answer === 'yes' && match < 0.28) return false;
       if (answer === 'no' && match >= 0.65) return false;
     }
     return true;
   });
+}
+
+/** Union of question ids that must never be asked given Yes answers so far. */
+export function blockedQuestionIdsFromHistory(
+  history: { q: WizardQuestion; answer: WizardAnswer }[],
+  askedIds: Set<string>
+): Set<string> {
+  const blocked = new Set(askedIds);
+  for (const { q, answer } of history) {
+    if (answer !== 'yes') continue;
+    applyYesExclusions(q.id, blocked);
+  }
+  return blocked;
+}
+
+/** Mark conceptual twins + mutual exclusions after a Yes so later pickers skip them. */
+export function applyYesExclusions(questionId: string, into: Set<string>): void {
+  const keys = [questionId];
+  if (questionId.startsWith('cluster_genre_')) {
+    const bare = questionId.replace('cluster_genre_', '');
+    if (bare === 'science_fiction') keys.push('scifi', 'outer_space', 'theme_space_futuristic');
+    else if (bare === 'comedy') keys.push('comedy', 'theme_humor_comedy');
+    else keys.push(bare);
+  }
+  // Soft space Yes should block the same earth-bound flavors as outer_space
+  if (questionId === 'theme_space_futuristic' || questionId === 'outer_space') {
+    keys.push('outer_space', 'theme_space_futuristic', 'scifi');
+  }
+  for (const key of keys) {
+    (MUTUAL_EXCLUSIONS[key] || []).forEach((id) => into.add(id));
+    (EQUIVALENT_QUESTIONS[key] || []).forEach((id) => into.add(id));
+  }
 }
 
 export function hasHardDiscoverFilters(filters: LiveDiscoverFilters): boolean {
@@ -1261,7 +1382,7 @@ export function questionEliminatesSomething(q: WizardQuestion, pool: Movie[]): b
  */
 export function buildLeaderProbeQuestion(
   scoredPool: ScoredMovie[],
-  askedIds: Set<string>,
+  blockedIds: Set<string>,
   topActors: ActorCandidate[] = []
 ): WizardQuestion | null {
   if (scoredPool.length < 2) return null;
@@ -1275,11 +1396,16 @@ export function buildLeaderProbeQuestion(
 
   for (const actor of topActors) {
     const qId = `probe_actor_${actor.id}`;
-    if (askedIds.has(qId) || askedIds.has(`dyn_actor_${actor.id}`) || askedIds.has(`actor_face_${actor.id}`)) {
+    if (
+      blockedIds.has(qId) ||
+      blockedIds.has(`dyn_actor_${actor.id}`) ||
+      blockedIds.has(`actor_face_${actor.id}`)
+    ) {
       continue;
     }
     if (!actor.movieIds.has(Number(lead.movie.id))) continue;
     const inPool = pool.filter((m) => actor.movieIds.has(Number(m.id))).length;
+    // Must include the leader and leave someone else standing
     if (inPool >= 1 && inPool < pool.length) {
       return {
         id: qId,
@@ -1298,7 +1424,7 @@ export function buildLeaderProbeQuestion(
     'outer_space', 'superhero', 'heist',
   ]);
   for (const q of traitBank) {
-    if (askedIds.has(q.id)) continue;
+    if (blockedIds.has(q.id)) continue;
     const leadHit = q.match(lead.movie) >= 0.55;
     if (!leadHit) continue;
     const hits = pool.filter((m) => q.match(m) >= 0.45).length;
@@ -1330,10 +1456,13 @@ export function selectSmartNextQuestion(
     scoredPool.map((s) => s.movie),
     history
   );
+  // Never resurrect eliminated titles (e.g. #1 after actor No)
   const constrainedScored =
     constrained.length > 0
       ? scoredPool.filter((s) => constrained.some((m) => String(m.id) === String(s.movie.id)))
-      : scoredPool;
+      : [];
+
+  if (constrainedScored.length === 0) return null;
 
   const pool = topContenderMovies(
     constrainedScored,
@@ -1341,36 +1470,40 @@ export function selectSmartNextQuestion(
   );
   if (pool.length === 0) return null;
 
+  const blocked = blockedQuestionIdsFromHistory(history, askedIds);
+
   const withHint = (q: WizardQuestion | null): WizardQuestion | null => {
     if (!q) return null;
+    if (blocked.has(q.id)) return null;
     if (!questionEliminatesSomething(q, pool)) return null;
     return { ...q, focusHint: undefined };
   };
 
   const eraDone =
     hasAnsweredEra ||
-    [...askedIds].some(
+    [...blocked].some(
       (id) =>
         ERA_QUESTION_IDS.includes(id) ||
         id.startsWith('cluster_era_') ||
         id.startsWith('dyn_year_')
     );
-  const animDone = ANIMATION_QUESTION_IDS.some((id) => askedIds.has(id));
-  const familyDone = askedIds.has('family_kids') || askedIds.has('theme_family_children');
-  const genreAnswers = CORE_GENRE_IDS.filter((id) => askedIds.has(id)).length;
-  const leadDone = askedIds.has('female_lead');
+  const animDone = ANIMATION_QUESTION_IDS.some((id) => blocked.has(id));
+  const familyDone = blocked.has('family_kids') || blocked.has('theme_family_children');
+  const genreAnswers = CORE_GENRE_IDS.filter((id) => blocked.has(id)).length;
+  const leadDone = blocked.has('female_lead');
 
   // Endgame / clear leader: probe #1 directly (actors etc.)
-  if (questionCount >= 5 || constrainedScored.length <= 12) {
-    const probe = buildLeaderProbeQuestion(constrainedScored, askedIds, topActors);
-    if (probe && questionEliminatesSomething(probe, pool)) return withHint(probe);
+  if (questionCount >= 4 || constrainedScored.length <= 15) {
+    const probe = buildLeaderProbeQuestion(constrainedScored, blocked, topActors);
+    const picked = probe ? withHint(probe) : null;
+    if (picked) return picked;
   }
 
   // Phase 1: YEAR
   if (!eraDone) {
     const preferredOrder = ['era_modern', 'era_pre2010', 'era_90s', 'era_80s', 'era_classic'];
     for (const id of preferredOrder) {
-      if (askedIds.has(id)) continue;
+      if (blocked.has(id)) continue;
       const q = QUESTION_BANK.find((x) => x.id === id);
       if (!q) continue;
       const picked = withHint(q);
@@ -1385,59 +1518,74 @@ export function selectSmartNextQuestion(
     if (picked) return picked;
   }
 
-  // Phase 3: FAMILY? — huge cut if No
+  // Phase 3: FAMILY?
   if (!familyDone) {
     const famQ = QUESTION_BANK.find((x) => x.id === 'family_kids');
     const picked = famQ ? withHint(famQ) : null;
     if (picked) return picked;
   }
 
-  // Phase 4: CORE GENRE (prefer hard-filter genres that still split)
+  // Phase 4: CORE GENRE
   if (genreAnswers < 2) {
     const genreBank = bankByIds([
       'comedy', 'horror', 'action', 'scifi', 'thriller', 'romance', 'crime',
       'fantasy_magic', 'war', 'detective', 'musical',
-    ]);
-    const genreQ = pickBestSplit(pool, genreBank, askedIds, 0.12);
+    ]).filter((q) => !blocked.has(q.id));
+    const genreQ = pickBestSplit(pool, genreBank, blocked, 0.12);
     const picked = genreQ ? withHint(genreQ) : null;
     if (picked) return picked;
 
-    const clusterGenre = generateClusterQuestion(pool, askedIds, true);
-    if (clusterGenre && clusterGenre.id.startsWith('cluster_genre_')) {
-      const pickedCluster = withHint(clusterGenre);
+    const clusterFromGen = generateClusterQuestion(pool, blocked, true);
+    if (clusterFromGen && clusterFromGen.id.startsWith('cluster_genre_')) {
+      const pickedCluster = withHint(clusterFromGen);
       if (pickedCluster) return pickedCluster;
     }
   }
 
   // Phase 5: FEMALE LEAD
   if (!leadDone) {
-    const leadQ = pickBestSplit(pool, bankByIds(['female_lead']), askedIds, 0.08);
+    const leadQ = pickBestSplit(pool, bankByIds(['female_lead']), blocked, 0.08);
     const picked = leadQ ? withHint(leadQ) : null;
     if (picked) return picked;
   }
 
-  // Phase 6: leader probe again if not taken earlier
+  // Phase 6: leader probe
   {
-    const probe = buildLeaderProbeQuestion(constrainedScored, askedIds, topActors);
-    if (probe) {
-      const picked = withHint(probe);
-      if (picked) return picked;
-    }
+    const probe = buildLeaderProbeQuestion(constrainedScored, blocked, topActors);
+    const picked = probe ? withHint(probe) : null;
+    if (picked) return picked;
   }
 
-  // Phase 7: remaining splits — must still eliminate
-  const clustered = generateClusterQuestion(pool, askedIds, true);
+  // Phase 7: remaining splits — must eliminate AND not be blocked by prior Yes
+  const clustered = generateClusterQuestion(pool, blocked, true);
   if (clustered) {
     const picked = withHint(clustered);
     if (picked) return picked;
   }
 
-  const bankQ = selectNextQuestion(constrainedScored, askedIds, true);
+  const bankQ = selectNextQuestion(constrainedScored, blocked, true);
   return withHint(bankQ);
 }
 
+/** Dynamic questions that actually cut the pool and aren't blocked. */
+export function generateDynamicQuestionSafe(
+  remaining: Movie[],
+  blockedIds: Set<string>,
+  topActors: ActorCandidate[] = []
+): WizardQuestion | null {
+  const q = generateDynamicQuestion(remaining, blockedIds, topActors);
+  if (!q) return null;
+  if (blockedIds.has(q.id)) return null;
+  if (!questionEliminatesSomething(q, remaining)) return null;
+  return q;
+}
+
 /** When any question is answered, mark its conceptual twins so we never re-ask. */
-export function markRelatedAskedIds(questionId: string, asked: Set<string>): void {
+export function markRelatedAskedIds(
+  questionId: string,
+  asked: Set<string>,
+  answer?: WizardAnswer
+): void {
   asked.add(questionId);
 
   const CLUSTER_TO_BANK: Record<string, string[]> = {
@@ -1475,6 +1623,8 @@ export function markRelatedAskedIds(questionId: string, asked: Set<string>): voi
     war: ['cluster_genre_war'],
     musical: ['cluster_genre_music', 'theme_singing_songs'],
     based_on_true: ['cluster_based_true', 'cluster_genre_history'],
+    outer_space: ['theme_space_futuristic', 'scifi'],
+    theme_space_futuristic: ['outer_space', 'scifi'],
   };
 
   (CLUSTER_TO_BANK[questionId] || []).forEach((id) => asked.add(id));
@@ -1486,6 +1636,10 @@ export function markRelatedAskedIds(questionId: string, asked: Set<string>): voi
     asked.add('era_90s');
     asked.add('era_80s');
     asked.add('era_classic');
+  }
+
+  if (answer === 'yes') {
+    applyYesExclusions(questionId, asked);
   }
 }
 
@@ -1679,7 +1833,7 @@ export function generateDynamicQuestion(
   for (const item of DYNAMIC_THEME_CANDIDATES) {
     if (askedIds.has(item.id)) continue;
     const matches = remaining.filter((m) => item.test(m)).length;
-    // Only ask if it cleanly divides between 20% and 80% of remaining candidates
+    // Only ask if it cleanly divides between remaining candidates
     if (matches >= 1 && matches < remaining.length) {
       const ratio = matches / remaining.length;
       const balanceScore = 1.0 - Math.abs(ratio - 0.5) * 2; // peaks at 50/50 split
@@ -1733,28 +1887,37 @@ export function generateDynamicQuestion(
     const medianRuntime = runtimes[Math.floor(runtimes.length / 2)];
     const qId = `dyn_runtime_${medianRuntime}`;
     if (!askedIds.has(qId) && medianRuntime > 70) {
-      return {
-        id: qId,
-        question: `Is it longer than ${medianRuntime} minutes?`,
-        match: (m) => ((m.runtime || 105) > medianRuntime ? 1.0 : 0.0),
-      };
+      const longer = remaining.filter((m) => (m.runtime || 105) > medianRuntime).length;
+      if (longer >= 1 && longer < remaining.length) {
+        return {
+          id: qId,
+          question: `Is it longer than ${medianRuntime} minutes?`,
+          match: (m) => ((m.runtime || 105) > medianRuntime ? 1.0 : 0.0),
+        };
+      }
     }
   }
 
-  // 4. Last resort: Specific Actor (only when storyline & era questions are exhausted)
-  // Always attach actorPhoto and actorName so UI can display a large headshot beside the question!
+  // 4. Last resort: actor who appears in SOME (not all) remaining movies
   for (const actor of topActors) {
     const qId = `dyn_actor_${actor.id}`;
-    if (!askedIds.has(qId) && actor.movieIds.size > 0 && actor.movieIds.size < remaining.length) {
-      return {
-        id: qId,
-        question: `Does it star ${actor.name}?`,
-        hint: actor.character ? `Character role: ${actor.character}` : 'Recognize this actor?',
-        actorPhoto: actor.profile_path,
-        actorName: actor.name,
-        match: (m) => (actor.movieIds.has(Number(m.id)) ? 1.0 : 0.0),
-      };
+    if (
+      askedIds.has(qId) ||
+      askedIds.has(`probe_actor_${actor.id}`) ||
+      askedIds.has(`actor_face_${actor.id}`)
+    ) {
+      continue;
     }
+    const inRemaining = remaining.filter((m) => actor.movieIds.has(Number(m.id))).length;
+    if (inRemaining < 1 || inRemaining >= remaining.length) continue;
+    return {
+      id: qId,
+      question: `Does it star ${actor.name}?`,
+      hint: actor.character ? `Character role: ${actor.character}` : 'Recognize this actor?',
+      actorPhoto: actor.profile_path,
+      actorName: actor.name,
+      match: (m) => (actor.movieIds.has(Number(m.id)) ? 1.0 : 0.0),
+    };
   }
 
   return null;

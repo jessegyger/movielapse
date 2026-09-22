@@ -28,10 +28,11 @@ import {
   WizardAnswer,
   ScoredMovie,
   fetchTopActorsForCandidates,
-  generateDynamicQuestion,
+  generateDynamicQuestionSafe,
   getNarrowingInsight,
   markRelatedAskedIds,
   filterPoolByHistory,
+  blockedQuestionIdsFromHistory,
   hasHardDiscoverFilters,
   formatMatchCount,
   estimateMatchTotal,
@@ -268,34 +269,34 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
       setAllMovies(workingMap);
 
       const constrained = filterPoolByHistory(Array.from(workingMap.values()), updatedHistory);
-      const scored = scoreAllMovies(
-        constrained.length > 0 ? constrained : Array.from(workingMap.values()),
-        updatedHistory,
-        updatedClueMatches
-      );
+      // Never fall back to unconstrained — that keeps #1 after an actor No
+      const poolMovies = constrained.length > 0 ? constrained : [];
+      const scored = scoreAllMovies(poolMovies, updatedHistory, updatedClueMatches);
       setScoredPool(scored);
 
-      const loadedAfter = constrained.length > 0 ? constrained.length : workingMap.size;
+      const loadedAfter = poolMovies.length || 1;
       setTmdbMatchTotal((prev) =>
         estimateMatchTotal(prev, totalResults > 0 ? totalResults : null, loadedBefore || loadedAfter, loadedAfter)
       );
       setIsQueryingTMDb(false);
 
+      const blocked = blockedQuestionIdsFromHistory(updatedHistory, updatedAskedIds);
+
       let nextQ = selectSmartNextQuestion(
         scored,
-        updatedAskedIds,
+        blocked,
         eraAnswered,
         newCount,
         updatedHistory,
         candidateActors
       );
 
-      if (!nextQ) {
+      if (!nextQ && scored.length >= 2) {
         const topScore = scored[0]?.score ?? 0;
         const dynamicThreshold = Math.max(3.0, topScore * 0.4);
         const topRemaining = scored.filter((s) => s.score >= dynamicThreshold).map((s) => s.movie);
         const pool = topRemaining.length >= 2 ? topRemaining : scored.slice(0, 15).map((s) => s.movie);
-        nextQ = generateDynamicQuestion(pool, updatedAskedIds, candidateActors);
+        nextQ = generateDynamicQuestionSafe(pool, blocked, candidateActors);
         if (nextQ) {
           nextQ = {
             ...nextQ,
@@ -330,7 +331,7 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
       let eraAnswered = hasAnsweredEra;
 
       const newAsked = new Set(askedIds);
-      markRelatedAskedIds(currentQuestion.id, newAsked);
+      markRelatedAskedIds(currentQuestion.id, newAsked, answer);
 
       // ── Smart Question Implication ──
       const CLUSTER_EXCLUSION_ALIAS: Record<string, string> = {
@@ -430,16 +431,17 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
     setAskedIds(newAsked);
     setQuestionCount(newCount);
 
-    const scored = scoreAllMovies(Array.from(allMovies.values()), newHistory, newClueIds);
-    setScoredPool(scored);
     const after = filterPoolByHistory(Array.from(allMovies.values()), newHistory);
+    const scored = scoreAllMovies(after, newHistory, newClueIds);
+    setScoredPool(scored);
     setTmdbMatchTotal((prev) =>
       estimateMatchTotal(prev, null, allMovies.size, after.length || 1)
     );
 
-    let nextQ = selectSmartNextQuestion(scored, newAsked, hasAnsweredEra, newCount, newHistory, candidateActors);
-    if (!nextQ) {
-      nextQ = generateDynamicQuestion(after.length ? after : scored.slice(0, 15).map((s) => s.movie), newAsked, candidateActors);
+    const blocked = blockedQuestionIdsFromHistory(newHistory, newAsked);
+    let nextQ = selectSmartNextQuestion(scored, blocked, hasAnsweredEra, newCount, newHistory, candidateActors);
+    if (!nextQ && after.length >= 2) {
+      nextQ = generateDynamicQuestionSafe(after, blocked, candidateActors);
     }
     setCurrentQuestion(nextQ || null);
   };
@@ -471,18 +473,18 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
     setAskedIds(newAsked);
     setCandidateActors([]); // Clear actor row immediately
 
-    // Re-score immediately: movies with rejected actors will be penalized and pruned
-    const scored = scoreAllMovies(Array.from(allMovies.values()), newHistory, clueMatches);
-    setScoredPool(scored);
+    // Re-score immediately on the filtered pool only
     const after = filterPoolByHistory(Array.from(allMovies.values()), newHistory);
+    const scored = scoreAllMovies(after, newHistory, clueMatches);
+    setScoredPool(scored);
     setTmdbMatchTotal((prev) =>
       estimateMatchTotal(prev, null, allMovies.size, after.length || 1)
     );
 
-    let nextQ = selectSmartNextQuestion(scored, newAsked, hasAnsweredEra, questionCount + 1, newHistory, []);
-    if (!nextQ) {
-      const filtered = after.length ? after : scored.filter((s) => s.score >= 0.5).map((s) => s.movie);
-      nextQ = generateDynamicQuestion(filtered, newAsked, []);
+    const blocked = blockedQuestionIdsFromHistory(newHistory, newAsked);
+    let nextQ = selectSmartNextQuestion(scored, blocked, hasAnsweredEra, questionCount + 1, newHistory, []);
+    if (!nextQ && after.length >= 2) {
+      nextQ = generateDynamicQuestionSafe(after, blocked, []);
     }
     setCurrentQuestion(nextQ || null);
   };
@@ -501,7 +503,7 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
       // Mark studio-related questions so we don't re-ask Disney after tapping the pill
       const newAsked = new Set(askedIds);
       if (companyId === '2|3') {
-        markRelatedAskedIds('disney_pixar', newAsked);
+        markRelatedAskedIds('disney_pixar', newAsked, 'yes');
         MUTUAL_EXCLUSIONS.disney_pixar?.forEach((id) => newAsked.add(id));
       }
       setAskedIds(newAsked);
@@ -546,7 +548,11 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
     setAllMovies(updatedMap);
     setClueMatches(newClueIds);
 
-    const scored = scoreAllMovies(Array.from(updatedMap.values()), history, newClueIds);
+    const scored = scoreAllMovies(
+      filterPoolByHistory(Array.from(updatedMap.values()), history),
+      history,
+      newClueIds
+    );
     setScoredPool(scored);
     setMiniClueText('');
     setIsQueryingTMDb(false);
@@ -554,15 +560,21 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
 
   // Keep asking — fall through bank → dynamic → actors so the button never no-ops
   const handleKeepNarrowingOnTheFly = () => {
-    const topRemaining = qualifyingScored.map((s) => s.movie);
-    const pool =
-      topRemaining.length >= 2
-        ? topRemaining
-        : scoredPool.slice(0, 20).map((s) => s.movie);
+    const constrained = filterPoolByHistory(
+      scoredPool.map((s) => s.movie),
+      history
+    );
+    const constrainedScored =
+      constrained.length > 0
+        ? scoredPool.filter((s) => constrained.some((m) => String(m.id) === String(s.movie.id)))
+        : scoredPool;
+    const topRemaining = constrainedScored.slice(0, 20).map((s) => s.movie);
+    const pool = topRemaining.length >= 2 ? topRemaining : constrainedScored.map((s) => s.movie);
+    const blocked = blockedQuestionIdsFromHistory(history, askedIds);
 
     let nextQ = selectSmartNextQuestion(
-      qualifyingScored.length ? qualifyingScored : scoredPool,
-      askedIds,
+      constrainedScored,
+      blocked,
       hasAnsweredEra,
       questionCount,
       history,
@@ -570,12 +582,16 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
     );
 
     if (!nextQ) {
-      nextQ = generateDynamicQuestion(pool, askedIds, candidateActors);
+      nextQ = generateDynamicQuestionSafe(pool, blocked, candidateActors);
     }
 
-    // Last resort: force an actor question even if themes are exhausted
-    if (!nextQ && candidateActors.length > 0) {
-      const actor = candidateActors.find((a) => !askedIds.has(`dyn_actor_${a.id}`));
+    // Last resort: actor who actually appears in the remaining pool
+    if (!nextQ && candidateActors.length > 0 && pool.length >= 2) {
+      const actor = candidateActors.find((a) => {
+        if (blocked.has(`dyn_actor_${a.id}`) || blocked.has(`probe_actor_${a.id}`)) return false;
+        const hits = pool.filter((m) => a.movieIds.has(Number(m.id))).length;
+        return hits >= 1 && hits < pool.length;
+      });
       if (actor) {
         nextQ = {
           id: `dyn_actor_${actor.id}`,
@@ -604,7 +620,8 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
     more.forEach((m) => updatedMap.set(String(m.id), m));
     setAllMovies(updatedMap);
 
-    const scored = scoreAllMovies(Array.from(updatedMap.values()), history, clueMatches);
+    const after = filterPoolByHistory(Array.from(updatedMap.values()), history);
+    const scored = scoreAllMovies(after, history, clueMatches);
     setScoredPool(scored);
     setIsLoadingMore(false);
   };
