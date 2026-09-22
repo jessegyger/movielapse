@@ -9,7 +9,10 @@ import {
   Play,
   ChevronRight,
   ChevronLeft,
+  ChevronDown,
+  ChevronUp,
   Loader2,
+  SlidersHorizontal,
 } from 'lucide-react';
 import Image from 'next/image';
 import { Movie } from '@/lib/tmdb/types';
@@ -578,6 +581,7 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
   const [nextPage, setNextPage] = useState(1);
   const [maxPages, setMaxPages] = useState(1);
   const [foundMovie, setFoundMovie] = useState<Movie | null>(null);
+  const [filtersOpen, setFiltersOpen] = useState(true);
   const listRef = useRef<HTMLDivElement>(null);
   const activeQueryRef = useRef<PoolQuery>({});
 
@@ -703,6 +707,8 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
     } else {
       celebrateIfReady(scored, nextAnswers, nextStep);
     }
+    // Collapse so the filtered grid gets the screen — expand to keep drilling
+    setFiltersOpen(false);
   };
 
   const handleReset = () => {
@@ -710,6 +716,7 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
     setCurrentStep(0);
     setFoundMovie(null);
     setVisibleCount(PAGE_SIZE);
+    setFiltersOpen(true);
     loadPoolForTags([]);
   };
 
@@ -822,7 +829,7 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
 
   return (
     <div className="w-full max-w-7xl mx-auto h-[calc(100dvh-5rem)] max-h-[calc(100dvh-5rem)] overflow-hidden flex flex-col p-2 sm:p-3 gap-2">
-      {/* Thin progress — no 6/12 mode */}
+      {/* Thin progress */}
       <div className="flex items-center gap-2 shrink-0">
         <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider shrink-0">
           Matchmaker
@@ -834,7 +841,7 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
           />
         </div>
         <span className="text-[10px] font-mono text-neutral-400 shrink-0">
-          Q{currentStep + 1}
+          Q{Math.min(currentStep + 1, QUESTION_BANK.length)}/{QUESTION_BANK.length}
         </span>
         <button
           type="button"
@@ -846,79 +853,153 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
         </button>
       </div>
 
-      {/* Question — hug content */}
-      <div className="shrink-0 flex flex-col bg-neutral-900/90 border border-neutral-800 rounded-xl px-2.5 py-2 sm:px-3 sm:py-2.5">
-        <div className="flex items-center justify-between gap-2 mb-2">
-          <h2 className="text-[15px] sm:text-base font-extrabold text-white leading-tight">
-            {currentQ.question}
-          </h2>
-          <div className="flex items-center gap-0.5 shrink-0">
-            <button
-              onClick={() => setCurrentStep((p) => Math.max(0, p - 1))}
-              disabled={currentStep === 0}
-              className="p-1 rounded-md text-neutral-400 disabled:opacity-30"
-              aria-label="Back"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => setCurrentStep((p) => Math.min(QUESTION_BANK.length - 1, p + 1))}
-              disabled={currentStep >= QUESTION_BANK.length - 1}
-              className="p-1 rounded-md text-neutral-400 disabled:opacity-30"
-              aria-label="Skip"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
+      {/* Filters — collapsible so results can fill the screen */}
+      <div className="shrink-0 flex flex-col bg-neutral-900/90 border border-neutral-800 rounded-xl overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setFiltersOpen((o) => !o)}
+          className="w-full flex items-center gap-2 px-2.5 py-2 sm:px-3 text-left hover:bg-neutral-800/40 transition"
+          aria-expanded={filtersOpen}
+        >
+          <SlidersHorizontal className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+          <span className="text-xs sm:text-sm font-bold text-white truncate flex-1">
+            {filtersOpen
+              ? currentQ.question
+              : answeredCount > 0
+                ? `${answeredCount} filter${answeredCount === 1 ? '' : 's'} on · tap to ask more`
+                : 'Filters · tap to start'}
+          </span>
+          {!filtersOpen && currentStep < QUESTION_BANK.length ? (
+            <span className="hidden sm:inline text-[10px] text-amber-400/90 font-semibold shrink-0 truncate max-w-[10rem]">
+              Next: {QUESTION_BANK[currentStep].question}
+            </span>
+          ) : null}
+          {filtersOpen ? (
+            <ChevronUp className="w-4 h-4 text-neutral-400 shrink-0" />
+          ) : (
+            <ChevronDown className="w-4 h-4 text-neutral-400 shrink-0" />
+          )}
+        </button>
 
-        <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
-          {currentQ.options.map((opt) => {
-            const isSelected = answers[currentStep]?.tag === opt.tag;
-            const isDontCare =
-              opt.tag === 'any' || opt.tag.endsWith('_any') || opt.tag.endsWith('_skip');
-            const spanFull = isDontCare && currentQ.options.length % 2 === 1;
-            return (
-              <button
-                key={opt.tag}
-                onClick={() => handleSelectOption(opt)}
-                className={`${spanFull ? 'col-span-2' : ''} text-left py-2.5 sm:py-3 px-2.5 rounded-xl border text-xs sm:text-sm font-semibold transition active:scale-[0.98] flex items-center gap-2 ${
-                  isSelected
-                    ? 'bg-amber-500/20 border-amber-500 text-white'
-                    : isDontCare
-                      ? 'border-dashed border-neutral-600 text-neutral-300 bg-neutral-950/40'
-                      : 'bg-neutral-950/70 border-neutral-800 text-neutral-200'
-                }`}
-              >
-                <span className="text-base shrink-0 leading-none">{opt.icon}</span>
-                <span className="truncate leading-tight">{opt.label}</span>
-                {isSelected ? <Check className="w-3.5 h-3.5 text-amber-400 ml-auto shrink-0" /> : null}
-              </button>
-            );
-          })}
-        </div>
+        {answeredCount > 0 ? (
+          <div className="flex flex-wrap gap-1 px-2.5 pb-2 sm:px-3">
+            {Object.entries(answers)
+              .sort(([a], [b]) => Number(a) - Number(b))
+              .map(([step, a]) => (
+                <button
+                  key={step}
+                  type="button"
+                  onClick={() => {
+                    setCurrentStep(Number(step));
+                    setFiltersOpen(true);
+                  }}
+                  className="text-[10px] sm:text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-200 border border-amber-500/30 hover:bg-amber-500/25 transition"
+                  title={`Edit: ${QUESTION_BANK[Number(step)]?.question ?? ''}`}
+                >
+                  {a.label}
+                </button>
+              ))}
+          </div>
+        ) : null}
+
+        {filtersOpen ? (
+          <div className="px-2.5 pb-2.5 sm:px-3 sm:pb-3 border-t border-neutral-800/80 pt-2">
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <h2 className="text-[15px] sm:text-base font-extrabold text-white leading-tight">
+                {currentQ.question}
+              </h2>
+              <div className="flex items-center gap-0.5 shrink-0">
+                <button
+                  onClick={() => setCurrentStep((p) => Math.max(0, p - 1))}
+                  disabled={currentStep === 0}
+                  className="p-1 rounded-md text-neutral-400 disabled:opacity-30"
+                  aria-label="Back"
+                  type="button"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => setCurrentStep((p) => Math.min(QUESTION_BANK.length - 1, p + 1))}
+                  disabled={currentStep >= QUESTION_BANK.length - 1}
+                  className="p-1 rounded-md text-neutral-400 disabled:opacity-30"
+                  aria-label="Skip"
+                  type="button"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFiltersOpen(false)}
+                  className="ml-1 text-[10px] font-bold uppercase tracking-wide text-neutral-400 hover:text-white px-1.5 py-1 rounded-md border border-neutral-700"
+                >
+                  Browse
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
+              {currentQ.options.map((opt) => {
+                const isSelected = answers[currentStep]?.tag === opt.tag;
+                const isDontCare =
+                  opt.tag === 'any' || opt.tag.endsWith('_any') || opt.tag.endsWith('_skip');
+                const spanFull = isDontCare && currentQ.options.length % 2 === 1;
+                return (
+                  <button
+                    key={opt.tag}
+                    type="button"
+                    onClick={() => handleSelectOption(opt)}
+                    className={`${spanFull ? 'col-span-2' : ''} text-left py-2.5 sm:py-3 px-2.5 rounded-xl border text-xs sm:text-sm font-semibold transition active:scale-[0.98] flex items-center gap-2 ${
+                      isSelected
+                        ? 'bg-amber-500/20 border-amber-500 text-white'
+                        : isDontCare
+                          ? 'border-dashed border-neutral-600 text-neutral-300 bg-neutral-950/40'
+                          : 'bg-neutral-950/70 border-neutral-800 text-neutral-200'
+                    }`}
+                  >
+                    <span className="text-base shrink-0 leading-none">{opt.icon}</span>
+                    <span className="truncate leading-tight">{opt.label}</span>
+                    {isSelected ? <Check className="w-3.5 h-3.5 text-amber-400 ml-auto shrink-0" /> : null}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
       </div>
 
-      {/* Full ranked list — fills screen, scroll to load more */}
+      {/* Full ranked list — fills leftover screen */}
       <div className="flex-1 min-h-0 rounded-xl border border-neutral-800 bg-neutral-950/90 flex flex-col overflow-hidden">
-        <div className="flex items-center justify-between px-2.5 py-1.5 border-b border-neutral-800/80 shrink-0">
-          <span className="text-[10px] uppercase font-bold tracking-wider text-emerald-400 flex items-center gap-1.5">
-            <span className="relative flex h-1.5 w-1.5">
+        <div className="flex items-center justify-between px-2.5 py-1.5 border-b border-neutral-800/80 shrink-0 gap-2">
+          <span className="text-[10px] uppercase font-bold tracking-wider text-emerald-400 flex items-center gap-1.5 min-w-0">
+            <span className="relative flex h-1.5 w-1.5 shrink-0">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
               <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
             </span>
-            {isLoadingPool
-              ? 'Loading…'
-              : displayTotal >= 1000
-                ? `${displayTotal.toLocaleString()}+ matches`
-                : `${displayTotal.toLocaleString()} matches`}
-            {answeredCount > 0 && !isLoadingPool ? ' · live' : ''}
-          </span>
-          {visibleCount < ranked.length || nextPage <= maxPages ? (
-            <span className="text-[9px] text-neutral-500">
-              {isLoadingMore ? 'Loading more…' : 'Scroll for more'}
+            <span className="truncate">
+              {isLoadingPool
+                ? 'Loading…'
+                : displayTotal >= 1000
+                  ? `${displayTotal.toLocaleString()}+ matches`
+                  : `${displayTotal.toLocaleString()} matches`}
+              {answeredCount > 0 && !isLoadingPool ? ' · live' : ''}
             </span>
-          ) : null}
+          </span>
+          <div className="flex items-center gap-2 shrink-0">
+            {!filtersOpen ? (
+              <button
+                type="button"
+                onClick={() => setFiltersOpen(true)}
+                className="text-[10px] font-bold text-amber-400 px-2 py-1 rounded-lg bg-amber-500/10 border border-amber-500/30 hover:bg-amber-500/20 transition"
+              >
+                + Filter
+              </button>
+            ) : null}
+            {visibleCount < ranked.length || nextPage <= maxPages ? (
+              <span className="text-[9px] text-neutral-500 hidden sm:inline">
+                {isLoadingMore ? 'Loading more…' : 'Scroll for more'}
+              </span>
+            ) : null}
+          </div>
         </div>
 
         <div
