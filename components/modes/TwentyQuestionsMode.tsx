@@ -48,12 +48,21 @@ const QUESTION_BANK: QuestionDef[] = [
       { label: 'Romance', tag: 'romance', icon: '💕' },
       { label: 'Sci-Fi / Fantasy', tag: 'scifi', icon: '🚀' },
       { label: 'Drama', tag: 'drama', icon: '🎭' },
-      { label: 'Animation / Family', tag: 'animation', icon: '🎨' },
       { label: "Don't care", tag: 'any', icon: '🎲' },
     ],
   },
   {
     id: 2,
+    question: 'Animated, kids, or adult?',
+    options: [
+      { label: 'Animated', tag: 'want_animated', icon: '🎨' },
+      { label: 'Kids / family', tag: 'want_kids', icon: '👨‍👩‍👧' },
+      { label: 'Adults (no kids stuff)', tag: 'want_adult', icon: '🔞' },
+      { label: "Don't care", tag: 'audience_any', icon: '🎲' },
+    ],
+  },
+  {
+    id: 3,
     question: 'Pace?',
     options: [
       { label: 'Fast', tag: 'fast', icon: '🎢' },
@@ -64,7 +73,7 @@ const QUESTION_BANK: QuestionDef[] = [
     ],
   },
   {
-    id: 3,
+    id: 4,
     question: 'Which era?',
     options: [
       { label: '2020s', tag: 'era_2020s', icon: '✨' },
@@ -77,7 +86,7 @@ const QUESTION_BANK: QuestionDef[] = [
     ],
   },
   {
-    id: 4,
+    id: 5,
     question: 'Setting vibe?',
     options: [
       { label: 'City / neon', tag: 'neon_noir', icon: '🌧️' },
@@ -88,7 +97,7 @@ const QUESTION_BANK: QuestionDef[] = [
     ],
   },
   {
-    id: 5,
+    id: 6,
     question: 'Plot style?',
     options: [
       { label: 'Twisty', tag: 'complex', icon: '🧩' },
@@ -99,7 +108,7 @@ const QUESTION_BANK: QuestionDef[] = [
     ],
   },
   {
-    id: 6,
+    id: 7,
     question: 'Tonight I want to…',
     options: [
       { label: 'Be shocked', tag: 'shock', icon: '🤯' },
@@ -110,7 +119,7 @@ const QUESTION_BANK: QuestionDef[] = [
     ],
   },
   {
-    id: 7,
+    id: 8,
     question: 'Who are you with?',
     options: [
       { label: 'Solo', tag: 'solo', icon: '🎧' },
@@ -121,7 +130,7 @@ const QUESTION_BANK: QuestionDef[] = [
     ],
   },
   {
-    id: 8,
+    id: 9,
     question: 'Dealbreakers?',
     options: [
       { label: 'No gore', tag: 'no_gore', icon: '🚫' },
@@ -132,7 +141,7 @@ const QUESTION_BANK: QuestionDef[] = [
     ],
   },
   {
-    id: 9,
+    id: 10,
     question: 'Tone?',
     options: [
       { label: 'Dark / sharp', tag: 'satire', icon: '🖤' },
@@ -143,7 +152,7 @@ const QUESTION_BANK: QuestionDef[] = [
     ],
   },
   {
-    id: 10,
+    id: 11,
     question: 'Lead character?',
     options: [
       { label: 'Antihero', tag: 'antihero', icon: '⚖️' },
@@ -164,6 +173,7 @@ const GENRE_TMDB: Record<string, number> = {
   scifi: 878,
   drama: 18,
   animation: 16,
+  family: 10751,
 };
 
 const PAGE_SIZE = 24;
@@ -252,6 +262,10 @@ function scoreMovie(movie: Movie, tags: string[]): number {
   if (tags.includes('emotional') && genres.includes('Drama')) score += 5;
   if (tags.includes('relax') && !genres.includes('Horror')) score += 3;
 
+  if (tags.includes('want_animated') && isAnimated(movie)) score += 14;
+  if (tags.includes('want_kids') && isKidsFriendly(movie)) score += 12;
+  if (tags.includes('want_adult') && !isAnimated(movie) && !genres.includes('Family')) score += 4;
+
   if (tags.includes('family') && genres.some((g) => ['Family', 'Animation'].includes(g))) score += 6;
   if (tags.includes('date') && genres.some((g) => ['Romance', 'Comedy'].includes(g))) score += 4;
 
@@ -267,15 +281,33 @@ function scoreMovie(movie: Movie, tags: string[]): number {
   return score;
 }
 
+function isAnimated(movie: Movie): boolean {
+  return (movie.genres || []).includes('Animation');
+}
+
+function isKidsFriendly(movie: Movie): boolean {
+  const genres = movie.genres || [];
+  if (genres.includes('Horror') || genres.includes('Thriller')) return false;
+  return genres.includes('Family') || genres.includes('Animation');
+}
+
 function hardPasses(movie: Movie, tags: string[]): boolean {
   const genres = movie.genres || [];
   const releaseYear = parseInt(movie.release_date?.slice(0, 4) || '0', 10);
   const runtime = movie.runtime || 120;
 
+  // Audience first — Animated / Kids / Adult are hard walls
+  if (tags.includes('want_animated') && !isAnimated(movie)) return false;
+  if (tags.includes('want_kids') && !isKidsFriendly(movie)) return false;
+  if (tags.includes('want_adult')) {
+    // Adults: never show animated or kids/family fare
+    if (isAnimated(movie)) return false;
+    if (genres.includes('Family')) return false;
+  }
+
   if (tags.includes('comedy') && !genres.includes('Comedy')) return false;
   if (tags.includes('horror') && !genres.includes('Horror')) return false;
   if (tags.includes('romance') && !genres.includes('Romance')) return false;
-  if (tags.includes('animation') && !genres.some((g) => ['Animation', 'Family'].includes(g))) return false;
   if (tags.includes('thriller') && !genres.some((g) => ['Thriller', 'Crime', 'Mystery'].includes(g))) return false;
   if (tags.includes('action') && !genres.some((g) => ['Action', 'Adventure'].includes(g))) return false;
   if (tags.includes('scifi') && !genres.some((g) => ['Science Fiction', 'Fantasy'].includes(g))) return false;
@@ -415,17 +447,22 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
     setAnswers(nextAnswers);
     const nextTags = Object.values(nextAnswers).map((a) => a.tag);
 
-    // Genre pick → refresh big discover pool for that genre
-    // Space setting → pull sci-fi discover so we have enough real space titles
+    // Genre / audience / space → refresh discover pool so filters have enough titles
     let pool = moviePool;
-    const needsGenreRefresh =
-      (currentStep === 0 && option.tag !== 'any' && GENRE_TMDB[option.tag]) ||
-      option.tag === 'space';
-    if (needsGenreRefresh) {
+    let genreForFetch: string | undefined;
+    if (currentStep === 0 && option.tag !== 'any' && GENRE_TMDB[option.tag]) {
+      genreForFetch = option.tag;
+    } else if (option.tag === 'want_animated') {
+      genreForFetch = 'animation';
+    } else if (option.tag === 'want_kids') {
+      genreForFetch = 'family';
+    } else if (option.tag === 'space') {
+      genreForFetch = 'scifi';
+    }
+
+    if (genreForFetch) {
       setIsLoadingPool(true);
-      const genreForFetch =
-        option.tag === 'space' ? 'scifi' : option.tag;
-      pool = await fetchBigPool(GENRE_TMDB[genreForFetch] ? genreForFetch : undefined);
+      pool = await fetchBigPool(genreForFetch);
       setMoviePool(pool);
       setIsLoadingPool(false);
     }
