@@ -231,9 +231,9 @@ const INITIAL_PAGES = 12;
 const ANIMATION_GENRE = 16;
 const FAMILY_GENRE = 10751;
 
-/** TMDb keyword ids — pipe = OR. Verified: space, outer space, astronaut, spacecraft, deep space */
+/** TMDb keyword ids — pipe = OR */
 const KW_SPACE = '9882|252634|14626|1612|209280';
-const KW_FOREST = '233960|156326';
+const KW_FOREST = '13209|233960|156326|223620'; // cabin in the woods, forest, woods, lost in the woods
 const KW_BEACH = '966|13088';
 const KW_SCHOOL = '339|14544';
 const KW_WAR = '14643|1701';
@@ -254,6 +254,39 @@ const SETTING_TAGS = [
   'warzone',
   'fantasy_world',
 ] as const;
+
+/** Soften / drop constraints until TMDb returns something usable */
+function relaxQuery(query: PoolQuery): PoolQuery | null {
+  // 1) Popularity floor too high for niche combos
+  if (query.voteCountGte && query.voteCountGte > 400) {
+    return { ...query, voteCountGte: 400 };
+  }
+  if (query.voteCountGte && query.voteCountGte > 100) {
+    return { ...query, voteCountGte: 100 };
+  }
+  // 2) Setting keywords AND genre often = 0 — drop keywords, score setting soft later
+  if (query.withKeywords && query.genreId) {
+    return { ...query, withKeywords: undefined };
+  }
+  if (query.withKeywords) {
+    return { ...query, withKeywords: undefined };
+  }
+  // 3) Drop remaining popularity caps
+  if (query.voteCountGte != null || query.voteCountLte != null) {
+    return { ...query, voteCountGte: undefined, voteCountLte: undefined };
+  }
+  // 4) Certification can wipe lists
+  if (query.certification || query.certificationLte) {
+    return {
+      ...query,
+      certification: undefined,
+      certificationLte: undefined,
+      certificationGte: undefined,
+      certificationCountry: undefined,
+    };
+  }
+  return null;
+}
 
 function isSpaceMovie(movie: Movie): boolean {
   const title = (movie.title || '').toLowerCase();
@@ -540,16 +573,16 @@ function poolQueryFromTags(tags: string[]): PoolQuery {
     q.withoutKeywords = KW_NUDITY;
   }
 
-  // Popularity / buzz
+  // Popularity / buzz — keep floors modest so they combine with genre/setting
   if (tags.includes('pop_hits')) {
-    q.voteCountGte = 2500;
+    q.voteCountGte = tags.some((t) => (SETTING_TAGS as readonly string[]).includes(t)) ? 500 : 1200;
     q.sortBy = 'popularity.desc';
   } else if (tags.includes('pop_known')) {
-    q.voteCountGte = 800;
+    q.voteCountGte = 300;
     q.sortBy = 'popularity.desc';
   } else if (tags.includes('pop_gems')) {
-    q.voteCountGte = 80;
-    q.voteCountLte = 2000;
+    q.voteCountGte = 50;
+    q.voteCountLte = 2500;
     q.sortBy = 'vote_average.desc';
   }
 
@@ -671,20 +704,33 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
 
   const loadPoolForTags = useCallback(
     async (tags: string[]) => {
-      const query = poolQueryFromTags(tags);
+      let query = poolQueryFromTags(tags);
       activeQueryRef.current = query;
       setIsLoadingPool(true);
-      // Settings need more pages so keyword/hard filters still leave a real list
       const pagesToFetch = tags.some((t) => (SETTING_TAGS as readonly string[]).includes(t))
         ? 24
         : INITIAL_PAGES;
-      const { movies, totalResults, totalPages } = await fetchDiscoverPages(query, 1, pagesToFetch);
+
+      let { movies, totalResults, totalPages } = await fetchDiscoverPages(query, 1, pagesToFetch);
+
+      // Genre + setting keywords + popularity often returns literally 0 — peel constraints
+      let guard = 0;
+      while (movies.length === 0 && totalResults === 0 && guard < 6) {
+        const next = relaxQuery(query);
+        if (!next) break;
+        query = next;
+        activeQueryRef.current = query;
+        const retry = await fetchDiscoverPages(query, 1, pagesToFetch);
+        movies = retry.movies;
+        totalResults = retry.totalResults;
+        totalPages = retry.totalPages;
+        guard += 1;
+      }
+
       setMoviePool(movies);
-      setMaxPages(totalPages);
+      setMaxPages(Math.max(totalPages, 1));
       setNextPage(pagesToFetch + 1);
       const scored = recompute(movies, tags);
-      // Keyword/year/cert discover totals already narrowed — use them.
-      // Client-only setting text filters: show filtered length so Space isn't stuck at 20k+.
       const clientOnlySetting = tags.some((t) =>
         ['city', 'small_town', 'fantasy_world', 'no_gore', 'lots_gore', 'no_tragedy', 'super_sad', 'no_nudity'].includes(
           t
@@ -722,13 +768,15 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
     if (n < MIN_QS_BEFORE_FOUND) return false;
     if (scored.length === 0) return false;
 
-    const hardLeft = scored.filter((m) => hardPasses(m, Object.values(nextAnswers).map((a) => a.tag)));
-    // Only celebrate when truly tiny — never because we under-fetched
-    const tight = hardLeft.length > 0 && hardLeft.length <= FOUND_THRESHOLD && (catalogTotal ?? 999) <= 40;
+    const tags = Object.values(nextAnswers).map((a) => a.tag);
+    const hardLeft = scored.filter((m) => hardPasses(m, tags));
+    const pool = hardLeft.length > 0 ? hardLeft : scored;
+    const tight = pool.length > 0 && pool.length <= FOUND_THRESHOLD && (catalogTotal ?? 999) <= 40;
     const allAnswered = n >= QUESTION_BANK.length;
 
     if (tight || allAnswered) {
-      const winner = (tight ? hardLeft : scored)[0];
+      const winner = pool[0];
+      if (!winner) return false;
       setFoundMovie(winner);
       setVisibleCount(Math.max(PAGE_SIZE * 2, 48));
       setChromeVisible(true);
@@ -747,7 +795,16 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
     return false;
   };
 
+  const exitFoundToFilters = () => {
+    setFoundMovie(null);
+    setChromeVisible(true);
+    const steps = Object.keys(answers).map(Number);
+    const last = steps.length ? Math.max(...steps) : 0;
+    setCurrentStep(last);
+  };
+
   const jumpToStep = (step: number) => {
+    setFoundMovie(null);
     setCurrentStep(Math.max(0, Math.min(QUESTION_BANK.length - 1, step)));
     setChromeVisible(true);
   };
@@ -763,14 +820,16 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
       return;
     }
 
-    // Wizard: next unanswered after this one; if you jumped ahead, wrap to earlier gaps
     const nxt = nextUnansweredStep(nextAnswers, currentStep);
     if (nxt != null) {
       setCurrentStep(nxt);
       setChromeVisible(true);
-    } else {
-      celebrateIfReady(scored, nextAnswers);
+      return;
     }
+
+    // All questions answered but still no celebrate (e.g. empty pool) — stay on last Q, don't wrap to start
+    setCurrentStep(QUESTION_BANK.length - 1);
+    setChromeVisible(true);
   };
 
   const handleReset = () => {
@@ -828,10 +887,51 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
   if (foundMovie) {
     const closeMatches = visible.filter((m) => String(m.id) !== String(foundMovie.id));
     return (
-      <div className="w-full h-[calc(100dvh-5rem)] max-h-[calc(100dvh-5rem)] overflow-hidden flex flex-col gap-2 p-2 sm:p-3 animate-fade-in">
+      <div className="w-full h-[calc(100dvh-11rem)] md:h-[calc(100dvh-5rem)] max-h-[calc(100dvh-11rem)] md:max-h-[calc(100dvh-5rem)] overflow-hidden flex flex-col gap-2 p-2 sm:p-3 animate-fade-in">
+        {/* Keep category pills so you can jump back and edit */}
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 min-w-0">
+          <button
+            type="button"
+            onClick={exitFoundToFilters}
+            className="text-[10px] sm:text-[11px] font-bold px-2.5 py-1 rounded-lg border border-neutral-700 text-neutral-200 hover:border-amber-500/50 shrink-0"
+          >
+            ← Filters
+          </button>
+          <div className="flex-1 min-w-0 overflow-x-auto no-scrollbar">
+            <div className="flex items-center gap-1 min-w-max pr-1">
+              {QUESTION_BANK.map((q, i) => {
+                const answered = answers[i] != null;
+                return (
+                  <button
+                    key={q.id}
+                    type="button"
+                    onClick={() => jumpToStep(i)}
+                    title={answered ? `${q.category}: ${answers[i].label}` : q.question}
+                    className={`text-[10px] sm:text-[11px] font-bold px-2 sm:px-2.5 py-1 rounded-lg border transition shrink-0 ${
+                      answered
+                        ? 'bg-amber-500/15 text-amber-200 border-amber-500/35 hover:bg-amber-500/25'
+                        : 'bg-neutral-900 text-neutral-400 border-neutral-800'
+                    }`}
+                  >
+                    {q.category}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleReset}
+            className="p-1 rounded-md text-neutral-500 hover:text-white shrink-0"
+            title="Start over"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
         <div
           className={`shrink-0 overflow-hidden transition-all duration-300 ease-out ${
-            chromeVisible ? 'max-h-40 opacity-100' : 'max-h-0 opacity-0 -mt-2'
+            chromeVisible ? 'max-h-44 opacity-100' : 'max-h-0 opacity-0 -mt-2'
           }`}
         >
           <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 bg-neutral-900/90 border border-neutral-800 rounded-xl px-3 py-3">
@@ -872,10 +972,10 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
               </button>
               <button
                 type="button"
-                onClick={handleReset}
-                className="px-3.5 py-2 rounded-xl bg-neutral-800 text-neutral-200 font-semibold text-sm flex items-center gap-1.5"
+                onClick={exitFoundToFilters}
+                className="px-3.5 py-2 rounded-xl bg-neutral-800 text-neutral-200 font-semibold text-sm"
               >
-                <RotateCcw className="w-3.5 h-3.5" /> Again
+                Back
               </button>
             </div>
           </div>
@@ -885,7 +985,7 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
           <div className="flex items-center justify-between px-2.5 py-1.5 border-b border-neutral-800/80 shrink-0">
             <p className="text-[10px] uppercase font-bold text-neutral-400 tracking-wider truncate">
               {chromeVisible
-                ? `Also close · ${displayTotal.toLocaleString()}${displayTotal > ranked.length ? '+' : ''}`
+                ? `Also close · ${Math.max(displayTotal - 1, closeMatches.length).toLocaleString()}`
                 : foundMovie.title}
             </p>
             <div className="flex items-center gap-2 shrink-0">
@@ -910,27 +1010,33 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
             onScroll={onListScroll}
             className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-2 sm:p-3"
           >
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8 gap-2.5 sm:gap-3">
-              {closeMatches.map((m, i) => (
-                <button
-                  key={m.id}
-                  type="button"
-                  onClick={() => (onSelectMovie ? onSelectMovie(m) : onPlayTrailer(m))}
-                  className="relative w-full aspect-[2/3] rounded-xl overflow-hidden border border-neutral-700 hover:border-amber-400 transition bg-neutral-900"
-                  title={m.title}
-                >
-                  {m.poster_path ? (
-                    <Image src={m.poster_path} alt={m.title} fill sizes="180px" className="object-cover" unoptimized />
-                  ) : null}
-                  <span className="absolute top-1.5 left-1.5 text-[10px] font-black bg-black/75 text-amber-300 px-1 rounded">
-                    #{i + 2}
-                  </span>
-                  <span className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/90 to-transparent px-1.5 pt-5 pb-1.5 text-[11px] font-semibold text-white line-clamp-2 text-left">
-                    {m.title}
-                  </span>
-                </button>
-              ))}
-            </div>
+            {closeMatches.length === 0 ? (
+              <div className="text-center py-10 text-sm text-neutral-400">
+                {isLoadingPool ? 'Loading more…' : 'Scroll or tap load more for more close matches.'}
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8 gap-2.5 sm:gap-3">
+                {closeMatches.map((m, i) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => (onSelectMovie ? onSelectMovie(m) : onPlayTrailer(m))}
+                    className="relative w-full aspect-[2/3] rounded-xl overflow-hidden border border-neutral-700 hover:border-amber-400 transition bg-neutral-900"
+                    title={m.title}
+                  >
+                    {m.poster_path ? (
+                      <Image src={m.poster_path} alt={m.title} fill sizes="180px" className="object-cover" unoptimized />
+                    ) : null}
+                    <span className="absolute top-1.5 left-1.5 text-[10px] font-black bg-black/75 text-amber-300 px-1 rounded">
+                      #{i + 2}
+                    </span>
+                    <span className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/90 to-transparent px-1.5 pt-5 pb-1.5 text-[11px] font-semibold text-white line-clamp-2 text-left">
+                      {m.title}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
             {visibleCount < ranked.length || nextPage <= maxPages ? (
               <div className="flex justify-center py-4">
                 <button
@@ -960,7 +1066,7 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
   }
 
   return (
-    <div className="w-full h-[calc(100dvh-5rem)] max-h-[calc(100dvh-5rem)] overflow-hidden flex flex-col p-2 sm:p-3 gap-2">
+    <div className="w-full h-[calc(100dvh-11rem)] md:h-[calc(100dvh-5rem)] max-h-[calc(100dvh-11rem)] md:max-h-[calc(100dvh-5rem)] overflow-hidden flex flex-col p-2 sm:p-3 gap-2">
       {/* Category pills — always visible */}
       <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 min-w-0">
         <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider shrink-0 hidden sm:inline">
@@ -1058,10 +1164,12 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
             <span className="truncate">
               {isLoadingPool
                 ? 'Loading…'
-                : displayTotal >= 1000
-                  ? `${displayTotal.toLocaleString()}+ matches`
-                  : `${displayTotal.toLocaleString()} matches`}
-              {answeredCount > 0 && !isLoadingPool ? ' · live' : ''}
+                : ranked.length === 0
+                  ? 'No matches — loosen a filter'
+                  : displayTotal >= 1000
+                    ? `${displayTotal.toLocaleString()}+ matches`
+                    : `${displayTotal.toLocaleString()} matches`}
+              {answeredCount > 0 && !isLoadingPool && ranked.length > 0 ? ' · live' : ''}
             </span>
           </span>
           {visibleCount < ranked.length || nextPage <= maxPages ? (
