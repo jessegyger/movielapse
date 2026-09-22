@@ -92,9 +92,20 @@ export class TMDbClient {
     yearLte?: string;
     watchProviderId?: number;
     watchRegion?: string;
+    releaseFormat?: 'all' | 'dvd' | 'theatrical';
   } = {}): Promise<{ results: Movie[]; totalPages: number }> {
     const page = options.page || 1;
     let url = `${TMDB_BASE_URL}/discover/movie?api_key=${this.apiKey}&page=${page}&include_adult=false`;
+
+    const today = new Date().toISOString().split('T')[0];
+    if (options.releaseFormat === 'dvd') {
+      url += `&with_release_type=5&release_date.lte=${today}&region=US`;
+    } else if (options.releaseFormat === 'theatrical') {
+      const d = new Date();
+      d.setDate(d.getDate() - 75);
+      const seventyFiveDaysAgo = d.toISOString().split('T')[0];
+      url += `&with_release_type=2|3&primary_release_date.gte=${seventyFiveDaysAgo}&primary_release_date.lte=${today}&region=US`;
+    }
 
     if (options.sortBy) {
       url += `&sort_by=${options.sortBy}`;
@@ -135,6 +146,34 @@ export class TMDbClient {
     }
 
     return { results: SEED_MOVIES.slice(0, 20), totalPages: 1 };
+  }
+
+  // Get movies currently playing in theatres
+  async getNowPlayingMovies(page: number = 1): Promise<{ results: Movie[]; totalPages: number }> {
+    try {
+      const res = await fetch(
+        `${TMDB_BASE_URL}/movie/now_playing?api_key=${this.apiKey}&page=${page}&region=US`
+      );
+      if (res.ok) {
+        const data = await res.json();
+        return {
+          results: (data.results || []).map((m: any) => this.formatTMDbMovie(m)),
+          totalPages: data.total_pages || 1,
+        };
+      }
+    } catch (err) {
+      console.warn('TMDb now_playing fetch failed', err);
+    }
+    return this.discoverMovies({ page, releaseFormat: 'theatrical' });
+  }
+
+  // Get movies available on DVD / Blu-ray physical media
+  async getDvdMovies(page: number = 1): Promise<{ results: Movie[]; totalPages: number }> {
+    return this.discoverMovies({
+      page,
+      releaseFormat: 'dvd',
+      sortBy: 'popularity.desc',
+    });
   }
 
   // Get movies actively streaming on Netflix in the user's region
@@ -204,9 +243,15 @@ export class TMDbClient {
   }
 
   // Paginated live search across hundreds of thousands of movies (actors, directors, titles)
-  async searchMoviesPaged(query: string, page: number = 1): Promise<{ results: Movie[]; totalPages: number }> {
+  async searchMoviesPaged(
+    query: string,
+    page: number = 1,
+    releaseFormat: 'all' | 'dvd' | 'theatrical' = 'all'
+  ): Promise<{ results: Movie[]; totalPages: number }> {
     const clean = query.trim();
     if (!clean) {
+      if (releaseFormat === 'dvd') return this.getDvdMovies(page);
+      if (releaseFormat === 'theatrical') return this.getNowPlayingMovies(page);
       return this.getTrendingMovies(page);
     }
 
@@ -227,6 +272,12 @@ export class TMDbClient {
       console.warn('TMDb paged search failed', err);
     }
 
+    if (releaseFormat === 'dvd') {
+      movieResults = movieResults.filter(m => m.is_on_dvd);
+    } else if (releaseFormat === 'theatrical') {
+      movieResults = movieResults.filter(m => m.is_in_theatres);
+    }
+
     // Check if query is an exact match for a movie title (e.g. "moon" matches "Moon")
     const cleanLower = clean.toLowerCase();
     const hasExactMovieMatch = movieResults.some(
@@ -244,10 +295,17 @@ export class TMDbClient {
             ((person.popularity || 0) > 10 && personNameLower.includes(cleanLower) && clean.includes(' '));
 
           if (isExactPerson || movieResults.length === 0) {
+            let pPool = person.movies;
+            if (releaseFormat === 'dvd') {
+              pPool = pPool.filter(m => m.is_on_dvd);
+            } else if (releaseFormat === 'theatrical') {
+              pPool = pPool.filter(m => m.is_in_theatres);
+            }
+
             const pageSize = 20;
             const startIndex = (page - 1) * pageSize;
-            const paged = person.movies.slice(startIndex, startIndex + pageSize);
-            const totalPages = Math.ceil(person.movies.length / pageSize);
+            const paged = pPool.slice(startIndex, startIndex + pageSize);
+            const totalPages = Math.ceil(pPool.length / pageSize);
             if (paged.length > 0) {
               return {
                 results: paged,
@@ -724,18 +782,30 @@ export class TMDbClient {
       };
     });
 
+    const titleClean = m.title || m.original_title || 'Untitled';
+    const releaseDate = m.release_date || "";
+    const today = new Date().toISOString().split('T')[0];
+    const diffDays = releaseDate ? Math.floor((new Date(today).getTime() - new Date(releaseDate).getTime()) / (1000 * 60 * 60 * 24)) : 999;
+    const isInTheatres = diffDays >= -14 && diffDays <= 75;
+    const isOnDvd = diffDays >= 75;
+    const titleEnc = encodeURIComponent(titleClean);
+
     return {
       id: m.id,
-      title: m.title || m.original_title || 'Untitled',
+      title: titleClean,
       overview: m.overview || "No overview available.",
       poster_path: m.poster_path
         ? `${TMDB_IMG_BASE}${m.poster_path}`
         : "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=500&auto=format&fit=crop&q=80",
       backdrop_path: m.backdrop_path ? `${TMDB_BACKDROP_BASE}${m.backdrop_path}` : undefined,
-      release_date: m.release_date || "",
+      release_date: releaseDate,
       vote_average: m.vote_average ? Math.round(m.vote_average * 10) / 10 : 7.5,
       genres: genres.length > 0 ? genres.slice(0, 3) : ["Feature Film"],
-      streaming_providers: cachedProviders || seedProviders || undefined
+      streaming_providers: cachedProviders || seedProviders || undefined,
+      is_on_dvd: isOnDvd,
+      is_in_theatres: isInTheatres,
+      dvd_buy_url: `https://www.amazon.com/s?k=${titleEnc}+dvd+blu-ray&i=movies-tv`,
+      theatre_tickets_url: `https://www.google.com/search?q=${titleEnc}+movie+showtimes+tickets`,
     };
   }
 }

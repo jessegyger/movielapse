@@ -16,7 +16,13 @@ export interface Movie {
   director?: string;
   cast?: string[];
   ai_match_reason?: string; // Explanation from the AI why this fits your mood
+  is_on_dvd?: boolean;
+  is_in_theatres?: boolean;
+  dvd_buy_url?: string;
+  theatre_tickets_url?: string;
 }
+
+export type ReleaseFormat = 'all' | 'dvd' | 'theatrical';
 
 export interface StreamingProvider {
   name: string;

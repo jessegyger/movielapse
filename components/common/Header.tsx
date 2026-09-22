@@ -94,46 +94,6 @@ export const Header: React.FC<HeaderProps> = ({
             </span>
           </button>
 
-          {/* Device Layout Switcher Dropdown / Pills */}
-          <div className="hidden lg:flex items-center gap-1 p-1 rounded-xl bg-neutral-900 border border-neutral-800 text-xs text-neutral-400">
-            <button
-              onClick={() => onSelectDeviceMode('auto')}
-              title="Responsive auto layout"
-              className={`px-2 py-1 rounded-lg transition ${
-                deviceMode === 'auto' ? 'bg-neutral-800 text-white font-bold' : 'hover:text-white'
-              }`}
-            >
-              Auto
-            </button>
-            <button
-              onClick={() => onSelectDeviceMode('mobile')}
-              title="Preview Mobile App Layout"
-              className={`p-1.5 rounded-lg transition ${
-                deviceMode === 'mobile' ? 'bg-amber-500 text-neutral-950 font-bold' : 'hover:text-white'
-              }`}
-            >
-              <Smartphone className="w-3.5 h-3.5" />
-            </button>
-            <button
-              onClick={() => onSelectDeviceMode('tablet')}
-              title="Preview Tablet Dual-Pane Layout"
-              className={`p-1.5 rounded-lg transition ${
-                deviceMode === 'tablet' ? 'bg-amber-500 text-neutral-950 font-bold' : 'hover:text-white'
-              }`}
-            >
-              <Tablet className="w-3.5 h-3.5" />
-            </button>
-            <button
-              onClick={() => onSelectDeviceMode('desktop')}
-              title="Preview Desktop Theater Layout"
-              className={`p-1.5 rounded-lg transition ${
-                deviceMode === 'desktop' ? 'bg-amber-500 text-neutral-950 font-bold' : 'hover:text-white'
-              }`}
-            >
-              <Monitor className="w-3.5 h-3.5" />
-            </button>
-          </div>
-
           {/* Engine Status Indicator */}
           <div
             className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-[11px] font-medium ${

@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Heart, Bookmark, Compass, Search, Flame, Award, TrendingUp, Loader2, Sparkles, ArrowUpDown, Calendar, X, Check } from 'lucide-react';
-import { Movie } from '@/lib/tmdb/types';
+import { Heart, Bookmark, Compass, Search, Flame, Award, TrendingUp, Loader2, Sparkles, ArrowUpDown, Calendar, X, Check, Disc, Ticket } from 'lucide-react';
+import { Movie, ReleaseFormat } from '@/lib/tmdb/types';
 import { tmdb, GENRE_NAME_TO_ID } from '@/lib/tmdb/client';
 import { MovieCard } from '../movie/MovieCard';
 
@@ -32,6 +32,7 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
   allSeedMovies,
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('trending');
+  const [releaseFormat, setReleaseFormat] = useState<ReleaseFormat>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchedQuery, setSearchedQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -76,12 +77,42 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
   };
 
   // Fetch movies from TMDb according to active tab, sort, genre, year or search
+  // Initialize release format from URL pathname / query params or localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const path = window.location.pathname.toLowerCase();
+      const search = window.location.search.toLowerCase();
+      const saved = localStorage.getItem('movielapse_release_format');
+
+      if (path.includes('/dvd') || search.includes('format=dvd') || search.includes('release=dvd')) {
+        setReleaseFormat('dvd');
+      } else if (path.includes('/theatre') || path.includes('/theater') || search.includes('format=theatrical') || search.includes('format=theatre')) {
+        setReleaseFormat('theatrical');
+      } else if (saved === 'dvd' || saved === 'theatrical') {
+        setReleaseFormat(saved as ReleaseFormat);
+      }
+    }
+  }, []);
+
+  const handleSelectFormat = (fmt: ReleaseFormat) => {
+    setReleaseFormat(fmt);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('movielapse_release_format', fmt);
+      const targetPath = fmt === 'all' ? '/' : `/${fmt}`;
+      if (window.location.pathname !== targetPath) {
+        window.history.pushState(null, '', targetPath);
+      }
+    }
+  };
+
+  // Fetch movies from TMDb according to active tab, sort, genre, year, format or search
   const fetchMovies = useCallback(async (
     tab: TabType,
     query: string,
     genre: string,
     sort: SortOption,
     era: YearOption,
+    fmt: ReleaseFormat,
     pageNum: number = 1,
     append: boolean = false
   ) => {
@@ -98,8 +129,8 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
     try {
       let data: { results: Movie[]; totalPages: number };
       if (query.trim()) {
-        data = await tmdb.searchMoviesPaged(query, pageNum);
-      } else if (sort !== 'popularity.desc' || genre !== 'All' || era !== 'All') {
+        data = await tmdb.searchMoviesPaged(query, pageNum, fmt);
+      } else if (sort !== 'popularity.desc' || genre !== 'All' || era !== 'All' || fmt !== 'all') {
         const boundaries = getYearBoundaries(era);
         const genreId = genre !== 'All' ? GENRE_NAME_TO_ID[genre] : undefined;
         data = await tmdb.discoverMovies({
@@ -109,6 +140,7 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
           yearGte: boundaries.yearGte,
           yearLte: boundaries.yearLte,
           watchProviderId: tab === 'netflix' ? 8 : undefined,
+          releaseFormat: fmt,
         });
       } else if (tab === 'netflix') {
         data = await tmdb.getNetflixMovies(pageNum);
@@ -139,12 +171,12 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
     }
   }, []);
 
-  // When tab, sort, genre, or year changes, reset page and fetch
+  // When tab, sort, genre, year, or release format changes, reset page and fetch
   useEffect(() => {
     if (activeTab !== 'curated' && activeTab !== 'loved' && activeTab !== 'watchlist') {
-      fetchMovies(activeTab, searchQuery, selectedGenre, sortBy, selectedYear, 1, false);
+      fetchMovies(activeTab, searchQuery, selectedGenre, sortBy, selectedYear, releaseFormat, 1, false);
     }
-  }, [activeTab, selectedGenre, sortBy, selectedYear, fetchMovies]);
+  }, [activeTab, selectedGenre, sortBy, selectedYear, releaseFormat, fetchMovies]);
 
   // Enrich curated movies on mount/tab change
   useEffect(() => {
@@ -164,7 +196,7 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
       if (activeTab === 'curated') {
         setActiveTab('trending');
       }
-      fetchMovies(activeTab === 'curated' ? 'trending' : activeTab, clean, selectedGenre, sortBy, selectedYear, 1, false);
+      fetchMovies(activeTab === 'curated' ? 'trending' : activeTab, clean, selectedGenre, sortBy, selectedYear, releaseFormat, 1, false);
     } else {
       clearSearch();
     }
@@ -178,7 +210,7 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
       clearTimeout(searchTimeoutRef.current);
     }
     if (activeTab !== 'loved' && activeTab !== 'watchlist') {
-      fetchMovies(activeTab, '', selectedGenre, sortBy, selectedYear, 1, false);
+      fetchMovies(activeTab, '', selectedGenre, sortBy, selectedYear, releaseFormat, 1, false);
     }
   };
 
@@ -196,9 +228,9 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
         if (activeTab === 'curated') {
           setActiveTab('trending');
         }
-        fetchMovies(activeTab === 'curated' ? 'trending' : activeTab, clean, selectedGenre, sortBy, selectedYear, 1, false);
+        fetchMovies(activeTab === 'curated' ? 'trending' : activeTab, clean, selectedGenre, sortBy, selectedYear, releaseFormat, 1, false);
       } else {
-        fetchMovies(activeTab, '', selectedGenre, sortBy, selectedYear, 1, false);
+        fetchMovies(activeTab, '', selectedGenre, sortBy, selectedYear, releaseFormat, 1, false);
       }
     }, 400);
   };
@@ -206,8 +238,8 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
   // Next page loader
   const handleLoadMore = useCallback(() => {
     if (isLoadingMore || isLoading || page >= totalPages) return;
-    fetchMovies(activeTab, searchQuery, selectedGenre, sortBy, selectedYear, page + 1, true);
-  }, [isLoadingMore, isLoading, page, totalPages, activeTab, searchQuery, selectedGenre, sortBy, selectedYear, fetchMovies]);
+    fetchMovies(activeTab, searchQuery, selectedGenre, sortBy, selectedYear, releaseFormat, page + 1, true);
+  }, [isLoadingMore, isLoading, page, totalPages, activeTab, searchQuery, selectedGenre, sortBy, selectedYear, releaseFormat, fetchMovies]);
 
   // Infinite Auto-Lazy Loading via IntersectionObserver
   useEffect(() => {
@@ -243,6 +275,12 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
 
   // Client-side filtering & sorting for Curated, Loved, and Watchlist
   const filtered = baseMovies.filter((m) => {
+    let matchesFormat = true;
+    if (releaseFormat === 'dvd') matchesFormat = !!m.is_on_dvd;
+    else if (releaseFormat === 'theatrical') matchesFormat = !!m.is_in_theatres;
+
+    if (!matchesFormat) return false;
+
     if (activeTab === 'curated' || activeTab === 'loved' || activeTab === 'watchlist') {
       const matchesQuery =
         !searchQuery ||
@@ -541,6 +579,61 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
           </button>
         </div>
       )}
+
+      {/* Release Format Switcher (All Formats | 📀 On DVD | 🎟️ In Theatres) */}
+      <div className="flex flex-wrap items-center justify-between gap-2.5 mb-3 p-2 rounded-xl bg-neutral-900/90 border border-neutral-800 shadow-sm">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-xs font-semibold text-neutral-300 mr-1 flex items-center gap-1">
+            <Disc className="w-3.5 h-3.5 text-amber-400" /> Release Format:
+          </span>
+          <button
+            onClick={() => handleSelectFormat('all')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1 ${
+              releaseFormat === 'all'
+                ? 'bg-neutral-800 text-white shadow border border-neutral-700'
+                : 'text-neutral-400 hover:text-white'
+            }`}
+          >
+            All Formats
+          </button>
+          <button
+            onClick={() => handleSelectFormat('dvd')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+              releaseFormat === 'dvd'
+                ? 'bg-amber-500 text-neutral-950 shadow-md shadow-amber-500/20'
+                : 'text-neutral-400 hover:text-white bg-neutral-950/60 border border-neutral-800/80 hover:border-neutral-700'
+            }`}
+          >
+            <span>📀 On DVD</span>
+          </button>
+          <button
+            onClick={() => handleSelectFormat('theatrical')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+              releaseFormat === 'theatrical'
+                ? 'bg-red-600 text-white shadow-md shadow-red-600/30'
+                : 'text-neutral-400 hover:text-white bg-neutral-950/60 border border-neutral-800/80 hover:border-neutral-700'
+            }`}
+          >
+            <span>🎟️ In Theatres</span>
+          </button>
+        </div>
+
+        {releaseFormat !== 'all' && (
+          <div className="flex items-center gap-2 text-xs">
+            <span className="text-amber-400/90 font-medium">
+              {releaseFormat === 'dvd'
+                ? '📀 Physical DVD / Blu-ray filter active'
+                : '🎟️ Cinema In-Theatres filter active'}
+            </span>
+            <button
+              onClick={() => handleSelectFormat('all')}
+              className="text-[11px] text-neutral-400 hover:text-white underline font-medium"
+            >
+              Reset to All
+            </button>
+          </div>
+        )}
+      </div>
 
       {/* Controls Bar: Sort Dropdown & Era Filter */}
       <div className="flex flex-wrap items-center justify-between gap-2.5 mb-3 p-2 rounded-xl bg-neutral-900/60 border border-neutral-800/80">

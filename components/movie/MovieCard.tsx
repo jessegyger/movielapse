@@ -262,6 +262,36 @@ export const MovieCard: React.FC<MovieCardProps> = ({
               </a>
             </div>
           )}
+
+          {/* Release Medium Badges (In Theatres / DVD) */}
+          {(movie.is_in_theatres || movie.is_on_dvd) && (
+            <div className="mt-2.5 flex items-center gap-1.5 flex-wrap">
+              {movie.is_in_theatres && (
+                <a
+                  href={movie.theatre_tickets_url || `https://www.google.com/search?q=${encodeURIComponent(movie.title)}+movie+showtimes+tickets`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  title={`Playing in cinemas now - Find showtimes & tickets for ${movie.title}`}
+                  className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md bg-red-950/80 border border-red-600/70 text-red-200 hover:bg-red-900 transition shadow-sm hover:scale-105"
+                >
+                  <span>🎟️ In Theatres ↗</span>
+                </a>
+              )}
+              {movie.is_on_dvd && (
+                <a
+                  href={movie.dvd_buy_url || `https://www.amazon.com/s?k=${encodeURIComponent(movie.title)}+dvd+blu-ray&i=movies-tv`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  title={`Available on DVD / Blu-ray - Buy on Amazon`}
+                  className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-950/80 border border-amber-600/70 text-amber-200 hover:bg-amber-900 transition shadow-sm hover:scale-105"
+                >
+                  <span>📀 On DVD ↗</span>
+                </a>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Action Buttons Footer */}
