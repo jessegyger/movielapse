@@ -1190,9 +1190,8 @@ export function selectSmartNextQuestion(
   );
   if (pool.length === 0) return null;
 
-  const insight = getNarrowingInsight(pool, questionCount);
   const withHint = (q: WizardQuestion | null): WizardQuestion | null =>
-    q ? { ...q, focusHint: q.focusHint || insight.hint } : null;
+    q ? { ...q, focusHint: undefined } : null;
 
   const eraDone =
     hasAnsweredEra ||

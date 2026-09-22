@@ -427,24 +427,7 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
         </button>
       </form>
 
-      {/* Mobile-Only 20Q Finder Launcher (prominently visible right on Vault shelf) */}
-      <div className="sm:hidden mb-3">
-        <button
-          type="button"
-          onClick={onOpenFinder}
-          className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-amber-500/20 via-amber-600/10 to-neutral-900 border border-amber-500/40 text-amber-300 font-extrabold text-xs flex items-center justify-between shadow-lg shadow-amber-500/5 active:scale-95 transition"
-        >
-          <div className="flex items-center gap-2">
-            <span className="p-1 rounded-lg bg-amber-500/20 text-amber-400">
-              <Clapperboard className="w-3.5 h-3.5" />
-            </span>
-            <span>Can&apos;t remember a movie?</span>
-          </div>
-          <span className="px-2 py-0.5 rounded-md bg-amber-500 text-neutral-950 font-black text-[10px] uppercase tracking-wider">
-            Launch 20Q
-          </span>
-        </button>
-      </div>
+      {/* Mobile-Only 20Q Finder Launcher removed — bottom nav / desktop button already cover this */}
 
       {/* Top Shelf Navigation Tabs */}
       <div className="flex items-center gap-3 sm:gap-4 mb-4">
@@ -569,19 +552,6 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
               <X className="w-4 h-4" />
             </button>
           </form>
-
-          {/* 20Q Movie Finder button on Mobile */}
-          <button
-            type="button"
-            onClick={() => {
-              setIsSearchOpen(false);
-              onOpenFinder?.();
-            }}
-            className="w-full my-2 py-2.5 px-3 rounded-xl bg-gradient-to-r from-amber-500/20 via-amber-600/15 to-neutral-900 border border-amber-500/40 text-amber-300 font-bold text-xs flex items-center justify-center gap-2 shadow shrink-0 active:scale-95 transition"
-          >
-            <Clapperboard className="w-4 h-4 text-amber-400" />
-            <span>Can&apos;t remember a movie? Try 20Q Finder</span>
-          </button>
 
           {/* Quick Filter Chips in Mobile Search */}
           <div className="py-2 flex items-center justify-between text-xs text-neutral-400 border-b border-neutral-900">

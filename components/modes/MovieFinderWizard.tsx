@@ -668,55 +668,36 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
 
           {/* Current Question Text */}
           {currentQuestion ? (
-            <div className="space-y-2 max-w-xl mx-auto">
-              {/* If asking about a specific actor, show their picture large right by the question */}
-              {currentQuestion.actorPhoto ? (
-                <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 py-1">
-                  <div className="relative group shrink-0">
-                    <img
-                      src={currentQuestion.actorPhoto}
-                      alt={currentQuestion.actorName || 'Actor'}
-                      className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl object-cover border-2 border-amber-400 shadow-xl shadow-amber-500/10 ring-4 ring-amber-500/20"
-                    />
-                    <div className="absolute -bottom-1 -right-1 px-1.5 py-0.5 rounded-md bg-neutral-900 border border-amber-500/50 text-[10px] font-bold text-amber-400">
-                      Actor
+            <div className="max-w-xl mx-auto flex flex-col">
+              {/* Fixed-height question zone so Yes/No buttons never jump */}
+              <div className="min-h-[5.5rem] sm:min-h-[6.25rem] flex flex-col items-center justify-center py-1">
+                {currentQuestion.actorPhoto ? (
+                  <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 w-full">
+                    <div className="relative shrink-0">
+                      <img
+                        src={currentQuestion.actorPhoto}
+                        alt={currentQuestion.actorName || 'Actor'}
+                        className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl object-cover border-2 border-amber-400 shadow-xl shadow-amber-500/10 ring-4 ring-amber-500/20"
+                      />
+                      <div className="absolute -bottom-1 -right-1 px-1.5 py-0.5 rounded-md bg-neutral-900 border border-amber-500/50 text-[10px] font-bold text-amber-400">
+                        Actor
+                      </div>
+                    </div>
+                    <div className="text-center sm:text-left space-y-0.5 min-w-0">
+                      <h2 className="text-white text-base sm:text-xl font-extrabold tracking-tight leading-snug line-clamp-3">
+                        {currentQuestion.question}
+                      </h2>
                     </div>
                   </div>
-                  <div className="text-center sm:text-left space-y-1">
-                    <h2 className="text-white text-lg sm:text-2xl font-extrabold tracking-tight leading-snug">
-                      {currentQuestion.question}
-                    </h2>
-                    {currentQuestion.hint && (
-                      <p className="text-neutral-400 text-xs sm:text-sm">{currentQuestion.hint}</p>
-                    )}
-                    {currentQuestion.focusHint && (
-                      <p className="text-[11px] text-amber-500/80 font-medium tracking-wide flex items-center justify-center sm:justify-start gap-1.5">
-                        <Sparkles className="w-3 h-3 shrink-0" />
-                        {currentQuestion.focusHint}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <h2 className="text-white text-lg sm:text-xl font-extrabold tracking-tight leading-snug">
+                ) : (
+                  <h2 className="text-white text-lg sm:text-xl font-extrabold tracking-tight leading-snug line-clamp-3 px-1">
                     {currentQuestion.question}
                   </h2>
-                  {currentQuestion.hint && (
-                    <p className="text-neutral-400 text-xs">{currentQuestion.hint}</p>
-                  )}
-                </>
-              )}
-
-              {currentQuestion.focusHint && (
-                <p className="text-[11px] text-amber-500/80 font-medium tracking-wide flex items-center justify-center gap-1.5">
-                  <Sparkles className="w-3 h-3 shrink-0" />
-                  {currentQuestion.focusHint}
-                </p>
-              )}
+                )}
+              </div>
 
               {/* ── COMPACT HELPER PILLS DIRECTLY ABOVE YES/NO BUTTONS ── */}
-              <div className="pt-2 pb-1 space-y-1.5 border-t border-neutral-800/60 mt-2">
+              <div className="pt-2 pb-1 space-y-1.5 border-t border-neutral-800/60">
                 <div className="flex items-center gap-1 overflow-x-auto no-scrollbar justify-center flex-wrap">
                   <span className="text-[10px] uppercase font-bold text-neutral-500 mr-1">Hunch?</span>
                   {COMPACT_STUDIO_PILLS.map((s) => (
@@ -770,43 +751,39 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
                 </form>
               </div>
 
-              {/* 4 Answers: YES on Left, NO on the FAR RIGHT */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2">
-                {/* 1. YES (Green) */}
+              {/* 4 Answers — always at the same vertical spot */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 shrink-0">
                 <button
                   disabled={isQueryingTMDb}
                   onClick={() => handleAnswer('yes')}
-                  className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-emerald-950/70 border border-emerald-500/60 hover:border-emerald-400 hover:bg-emerald-900/80 text-emerald-300 hover:text-white transition active:scale-95 font-bold text-xs sm:text-sm shadow disabled:opacity-50"
+                  className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-emerald-950/70 border border-emerald-500/60 hover:border-emerald-400 hover:bg-emerald-900/80 text-emerald-300 hover:text-white transition active:scale-95 font-bold text-xs sm:text-sm shadow disabled:opacity-50"
                 >
                   <Check className="w-3.5 h-3.5 text-emerald-400 stroke-[3]" />
                   <span>Yes</span>
                 </button>
 
-                {/* 2. SOMETIMES (Amber) */}
                 <button
                   disabled={isQueryingTMDb}
                   onClick={() => handleAnswer('sometimes')}
-                  className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-amber-950/70 border border-amber-500/60 hover:border-amber-400 hover:bg-amber-900/80 text-amber-300 hover:text-white transition active:scale-95 font-bold text-xs sm:text-sm shadow disabled:opacity-50"
+                  className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-amber-950/70 border border-amber-500/60 hover:border-amber-400 hover:bg-amber-900/80 text-amber-300 hover:text-white transition active:scale-95 font-bold text-xs sm:text-sm shadow disabled:opacity-50"
                 >
                   <HelpCircle className="w-3.5 h-3.5 text-amber-400" />
                   <span>Sometimes</span>
                 </button>
 
-                {/* 3. NOT SURE (Gray) */}
                 <button
                   disabled={isQueryingTMDb}
                   onClick={() => handleAnswer('skip')}
-                  className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-neutral-800/90 border border-neutral-700 hover:border-neutral-600 hover:bg-neutral-700 text-neutral-300 hover:text-white transition active:scale-95 font-semibold text-xs sm:text-sm shadow disabled:opacity-50"
+                  className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-neutral-800/90 border border-neutral-700 hover:border-neutral-600 hover:bg-neutral-700 text-neutral-300 hover:text-white transition active:scale-95 font-semibold text-xs sm:text-sm shadow disabled:opacity-50"
                 >
                   <Minus className="w-3.5 h-3.5 text-neutral-400" />
                   <span>Not sure</span>
                 </button>
 
-                {/* 4. NO (Red on FAR RIGHT) */}
                 <button
                   disabled={isQueryingTMDb}
                   onClick={() => handleAnswer('no')}
-                  className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-red-950/70 border border-red-600/60 hover:border-red-500 hover:bg-red-900/80 text-red-300 hover:text-white transition active:scale-95 font-bold text-xs sm:text-sm shadow disabled:opacity-50"
+                  className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-red-950/70 border border-red-600/60 hover:border-red-500 hover:bg-red-900/80 text-red-300 hover:text-white transition active:scale-95 font-bold text-xs sm:text-sm shadow disabled:opacity-50"
                 >
                   <XCircle className="w-3.5 h-3.5 text-red-400" />
                   <span>No</span>
