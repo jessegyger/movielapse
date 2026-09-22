@@ -222,10 +222,9 @@ export const MovieCard: React.FC<MovieCardProps> = ({
                 rel="noopener noreferrer"
                 onClick={(e) => e.stopPropagation()}
                 title={`In Theatres now - Get showtimes & tickets for ${movie.title}`}
-                className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-lg bg-red-950/80 border border-red-600/70 text-red-200 hover:bg-red-900 transition shadow-sm hover:scale-105 shrink-0"
+                className="p-1.5 rounded-lg bg-red-950/90 border border-red-600/80 text-red-300 hover:text-white hover:bg-red-900 transition shadow-sm hover:scale-110 active:scale-95 flex items-center justify-center shrink-0"
               >
-                <Ticket className="w-3 h-3 text-red-400 shrink-0" />
-                <span>Theatres ↗</span>
+                <Ticket className="w-3.5 h-3.5 text-red-400 shrink-0" />
               </a>
             )}
 

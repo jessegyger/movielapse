@@ -16,6 +16,9 @@ interface ShelfModeProps {
   dislikedMovies: Movie[];
   watchlistMovies: Movie[];
   allSeedMovies: Movie[];
+  searchQuery?: string;
+  onSearchChange?: (val: string) => void;
+  onClearSearch?: () => void;
 }
 
 type TabType = 'trending' | 'popular' | 'netflix' | 'top_rated' | 'curated' | 'loved' | 'watchlist';
@@ -34,11 +37,14 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
   dislikedMovies,
   watchlistMovies,
   allSeedMovies,
+  searchQuery: externalSearchQuery,
+  onSearchChange,
+  onClearSearch,
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('trending');
   const [theatricalFilter, setTheatricalFilter] = useState<TheatricalFilter>('all');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchedQuery, setSearchedQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(externalSearchQuery || '');
+  const [searchedQuery, setSearchedQuery] = useState(externalSearchQuery || '');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [selectedGenre, setSelectedGenre] = useState<string>('All');
   const [sortBy, setSortBy] = useState<SortOption>('popularity.desc');
@@ -182,6 +188,22 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
     }
   }, [activeTab, allSeedMovies]);
 
+  // Sync external search changes (e.g. from mobile sticky search bar)
+  useEffect(() => {
+    if (externalSearchQuery !== undefined && externalSearchQuery !== searchQuery) {
+      setSearchQuery(externalSearchQuery);
+      if (!externalSearchQuery.trim()) {
+        setSearchedQuery('');
+        if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+        if (activeTab !== 'loved' && activeTab !== 'watchlist') {
+          fetchMovies(activeTab, '', selectedGenre, sortBy, selectedYear, theatricalFilter, 1, false);
+        }
+      } else {
+        handleSearchChange(externalSearchQuery, false);
+      }
+    }
+  }, [externalSearchQuery]);
+
   const executeSearch = (queryToSearch: string) => {
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current);
@@ -203,6 +225,8 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
     setSearchQuery('');
     setSearchedQuery('');
     setIsSearchOpen(false);
+    onSearchChange?.('');
+    onClearSearch?.();
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current);
     }
@@ -212,23 +236,30 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
   };
 
   // Debounced search
-  const handleSearchChange = (val: string) => {
+  const handleSearchChange = (val: string, syncExternal: boolean = true) => {
     setSearchQuery(val);
+    if (syncExternal && onSearchChange && val !== externalSearchQuery) {
+      onSearchChange(val);
+    }
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current);
     }
 
-    searchTimeoutRef.current = setTimeout(() => {
-      const clean = val.trim();
-      setSearchedQuery(clean);
-      if (clean) {
-        if (activeTab === 'curated') {
-          setActiveTab('trending');
-        }
-        fetchMovies(activeTab === 'curated' ? 'trending' : activeTab, clean, selectedGenre, sortBy, selectedYear, theatricalFilter, 1, false);
-      } else {
+    const clean = val.trim();
+    if (!clean) {
+      setSearchedQuery('');
+      if (activeTab !== 'loved' && activeTab !== 'watchlist') {
         fetchMovies(activeTab, '', selectedGenre, sortBy, selectedYear, theatricalFilter, 1, false);
       }
+      return;
+    }
+
+    searchTimeoutRef.current = setTimeout(() => {
+      setSearchedQuery(clean);
+      if (activeTab === 'curated') {
+        setActiveTab('trending');
+      }
+      fetchMovies(activeTab === 'curated' ? 'trending' : activeTab, clean, selectedGenre, sortBy, selectedYear, theatricalFilter, 1, false);
     }, 400);
   };
 
@@ -387,13 +418,13 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
           </button>
         </div>
 
-        {/* Search input with explicit Search button & mobile full-screen support */}
+        {/* Search input with explicit Search button (Hidden on mobile because it's sticky in the top bar) */}
         <form
           onSubmit={(e) => {
             e.preventDefault();
             executeSearch(searchQuery);
           }}
-          className="flex items-center gap-1.5 w-full lg:w-auto"
+          className="hidden sm:flex items-center gap-1.5 w-full lg:w-auto"
         >
           <div className="relative flex-1 lg:w-72">
             <Search className="w-4 h-4 text-neutral-500 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -515,9 +546,13 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
                     key={`mobile-search-${movie.id}`}
                     onClick={() => {
                       setIsSearchOpen(false);
-                      onPlayTrailer(movie);
+                      if (onSelectMovie) {
+                        onSelectMovie(movie);
+                      } else {
+                        onPlayTrailer(movie);
+                      }
                     }}
-                    className="flex gap-2 p-1.5 rounded-xl bg-neutral-900/90 border border-neutral-800 items-center cursor-pointer active:scale-98 transition"
+                    className="flex gap-2 p-1.5 rounded-xl bg-neutral-900/90 border border-neutral-800 items-center cursor-pointer active:scale-98 transition hover:border-amber-500/40"
                   >
                     {movie.poster_path ? (
                       <img
@@ -612,7 +647,7 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
           </div>
         </div>
 
-        {/* Compact Theatres Filter Toggle - zero wasted vertical space */}
+        {/* Super compact Theatres filter toggle (All / Off / Only) */}
         <div className="flex items-center gap-1.5 text-xs">
           <span className="text-neutral-400 font-semibold flex items-center gap-1 text-[11px]">
             <Ticket className="w-3.5 h-3.5 text-red-400" /> Theatres:
@@ -620,8 +655,8 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
           <div className="flex items-center p-0.5 rounded-lg bg-neutral-950 border border-neutral-800">
             <button
               onClick={() => handleTheatricalFilter('all')}
-              title="Show all movies"
-              className={`px-2 py-0.5 rounded text-[11px] font-semibold transition ${
+              title="All: Show both cinema and streaming releases"
+              className={`px-2.5 py-0.5 rounded text-[11px] font-semibold transition ${
                 theatricalFilter === 'all'
                   ? 'bg-neutral-800 text-white shadow'
                   : 'text-neutral-400 hover:text-white'
@@ -631,25 +666,25 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
             </button>
             <button
               onClick={() => handleTheatricalFilter('hide_theatres')}
-              title="Remove movies currently in theatres (At Home / Streaming only)"
-              className={`px-2 py-0.5 rounded text-[11px] font-semibold transition ${
+              title="Off: Hide cinema releases (Streaming & At-Home only)"
+              className={`px-2.5 py-0.5 rounded text-[11px] font-semibold transition ${
                 theatricalFilter === 'hide_theatres'
                   ? 'bg-amber-500 text-neutral-950 font-bold shadow'
                   : 'text-neutral-400 hover:text-white'
               }`}
             >
-              🏠 Hide Theatres
+              Off
             </button>
             <button
               onClick={() => handleTheatricalFilter('theatres_only')}
-              title="Show only movies currently playing in theatres"
-              className={`px-2 py-0.5 rounded text-[11px] font-semibold transition ${
+              title="Only: Show in-theatre movies only"
+              className={`px-2.5 py-0.5 rounded text-[11px] font-semibold transition ${
                 theatricalFilter === 'theatres_only'
                   ? 'bg-red-600 text-white font-bold shadow'
                   : 'text-neutral-400 hover:text-white'
               }`}
             >
-              🎟️ In Theatres
+              Only
             </button>
           </div>
         </div>

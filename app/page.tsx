@@ -31,6 +31,7 @@ export default function Home() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [seedMovies, setSeedMovies] = useState<Movie[]>([]);
   const [geminiApiKey, setGeminiApiKey] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
 
   // WebLLM Loading Progress State
   const [webllmProgress, setWebllmProgress] = useState<WebLLMProgress>({
@@ -189,6 +190,9 @@ export default function Home() {
             dislikedMovies={store.disliked}
             watchlistMovies={store.watchlist}
             allSeedMovies={seedMovies}
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            onClearSearch={() => setSearchQuery('')}
           />
         );
     }
@@ -215,6 +219,9 @@ export default function Home() {
           onSelectAppMode={store.setAppMode}
           lovedCount={store.loved.length}
           onOpenTasteProfiler={() => setIsTasteProfilerOpen(true)}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          onClearSearch={() => setSearchQuery('')}
         >
           {renderModeContent()}
         </MobileLayout>
