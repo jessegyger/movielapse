@@ -48,16 +48,18 @@ interface MovieFinderWizardProps {
 const MAX_STANDARD_QUESTIONS = 20;
 
 const COMPACT_STUDIO_PILLS = [
-  { label: '🏰 Disney/Pixar', companyId: '2|3' },
-  { label: '💥 Marvel', companyId: '420' },
-  { label: '🐼 DreamWorks', companyId: '521' },
-  { label: '🍃 Ghibli', companyId: '10342' },
-  { label: '🛡️ Warner', companyId: '174' },
+  { label: 'Disney', companyId: '2|3' },
+  { label: 'Marvel', companyId: '420' },
+  { label: 'DreamWorks', companyId: '521' },
+  { label: 'Ghibli', companyId: '10342' },
+  { label: 'Warner', companyId: '174' },
 ];
 
+/** Proper decade buckets — no overlapping / gap between 2000–2009 */
 const COMPACT_ERA_PILLS = [
-  { label: '< 2010', lte: '2009-12-31' },
-  { label: '> 2000', gte: '2001-01-01' },
+  { label: '2020s', gte: '2020-01-01' },
+  { label: '2010s', gte: '2010-01-01', lte: '2019-12-31' },
+  { label: '2000s', gte: '2000-01-01', lte: '2009-12-31' },
   { label: '90s', gte: '1990-01-01', lte: '1999-12-31' },
   { label: '80s', gte: '1980-01-01', lte: '1989-12-31' },
   { label: 'Classic', lte: '1979-12-31' },
@@ -642,72 +644,65 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
       {/* Main Scrollable Body */}
       <div className="flex-1 w-full max-w-5xl overflow-y-auto px-3 sm:px-4 py-2.5 space-y-2.5 overscroll-contain">
         {/* ── QUESTION CARD (COMPACT VERTICAL SPACE) ── */}
-        <div className="bg-gradient-to-b from-neutral-900 to-neutral-950 border border-neutral-800 rounded-2xl p-3.5 sm:p-5 text-center shadow-lg relative">
-          {/* Header & Match Counter */}
-          <div className="flex items-center justify-between text-xs text-neutral-400 mb-1.5">
-            <span className="font-bold text-amber-400 uppercase tracking-widest text-[10px]">
-              Question {questionCount + 1}
-              {questionCount < MAX_STANDARD_QUESTIONS ? ` of ${MAX_STANDARD_QUESTIONS}` : ' (On-The-Fly)'}
-            </span>
-            <span className="flex items-center gap-1.5 text-xs font-medium">
+        <div className="bg-gradient-to-b from-neutral-900 to-neutral-950 border border-neutral-800 rounded-2xl p-3 sm:p-5 text-center shadow-lg relative">
+          {/* Header: question # + matches inline */}
+          <div className="flex items-center justify-between gap-2 text-xs text-neutral-400 mb-1">
+            <span className="font-bold text-amber-400 uppercase tracking-widest text-[10px] truncate">
+              Q{questionCount + 1}
+              {questionCount < MAX_STANDARD_QUESTIONS ? `/${MAX_STANDARD_QUESTIONS}` : '+'}
+              <span className="mx-1.5 text-neutral-700 font-normal">·</span>
               {isQueryingTMDb ? (
-                <>
-                  <Loader2 className="w-3 h-3 animate-spin text-amber-400" />
-                  <span className="text-amber-400">Narrowing...</span>
-                </>
+                <span className="text-amber-400 normal-case tracking-normal inline-flex items-center gap-1">
+                  <Loader2 className="w-3 h-3 animate-spin" /> Narrowing
+                </span>
               ) : (
-                <>
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  <span className="text-emerald-400 font-bold">
-                    {displayedCandidates.length} matches
-                  </span>
-                </>
+                <span className="text-emerald-400 normal-case tracking-normal font-bold">
+                  {displayedCandidates.length} matches
+                </span>
               )}
+            </span>
+            <span className="text-[10px] text-neutral-500 font-semibold shrink-0 hidden sm:inline">
+              Live TMDb
             </span>
           </div>
 
           {/* Current Question Text */}
           {currentQuestion ? (
             <div className="max-w-xl mx-auto flex flex-col">
-              {/* Fixed-height question zone so Yes/No buttons never jump */}
-              <div className="min-h-[5.5rem] sm:min-h-[6.25rem] flex flex-col items-center justify-center py-1">
+              {/* Fixed-height question zone so answer buttons never jump */}
+              <div className="min-h-[4.25rem] sm:min-h-[5.5rem] flex flex-col items-center justify-center py-0.5">
                 {currentQuestion.actorPhoto ? (
-                  <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 w-full">
+                  <div className="flex flex-row items-center justify-center gap-2.5 sm:gap-4 w-full">
                     <div className="relative shrink-0">
                       <img
                         src={currentQuestion.actorPhoto}
                         alt={currentQuestion.actorName || 'Actor'}
-                        className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl object-cover border-2 border-amber-400 shadow-xl shadow-amber-500/10 ring-4 ring-amber-500/20"
+                        className="w-14 h-14 sm:w-20 sm:h-20 rounded-xl object-cover border-2 border-amber-400 shadow-lg"
                       />
-                      <div className="absolute -bottom-1 -right-1 px-1.5 py-0.5 rounded-md bg-neutral-900 border border-amber-500/50 text-[10px] font-bold text-amber-400">
-                        Actor
-                      </div>
                     </div>
-                    <div className="text-center sm:text-left space-y-0.5 min-w-0">
-                      <h2 className="text-white text-base sm:text-xl font-extrabold tracking-tight leading-snug line-clamp-3">
-                        {currentQuestion.question}
-                      </h2>
-                    </div>
+                    <h2 className="text-white text-base sm:text-xl font-extrabold tracking-tight leading-snug line-clamp-3 text-left min-w-0">
+                      {currentQuestion.question}
+                    </h2>
                   </div>
                 ) : (
-                  <h2 className="text-white text-lg sm:text-xl font-extrabold tracking-tight leading-snug line-clamp-3 px-1">
+                  <h2 className="text-white text-base sm:text-xl font-extrabold tracking-tight leading-snug line-clamp-3 px-1">
                     {currentQuestion.question}
                   </h2>
                 )}
               </div>
 
-              {/* ── COMPACT HELPER PILLS DIRECTLY ABOVE YES/NO BUTTONS ── */}
-              <div className="pt-2 pb-1 space-y-1.5 border-t border-neutral-800/60">
-                <div className="flex items-center gap-1 overflow-x-auto no-scrollbar justify-center flex-wrap">
-                  <span className="text-[10px] uppercase font-bold text-neutral-500 mr-1">Hunch?</span>
+              {/* Hunch: MAX 2 lines — pills scroll on line 1, clue on line 2 */}
+              <div className="pt-1.5 border-t border-neutral-800/60 space-y-1">
+                <div className="flex items-center gap-1 overflow-x-auto no-scrollbar flex-nowrap">
+                  <span className="text-[9px] uppercase font-bold text-neutral-500 shrink-0 pl-0.5">Hunch</span>
                   {COMPACT_STUDIO_PILLS.map((s) => (
                     <button
                       key={s.label}
                       onClick={() => handleToggleStudioPill(s.companyId, s.label)}
-                      className={`px-2 py-0.5 rounded-lg text-[11px] font-semibold transition shrink-0 border ${
+                      className={`px-1.5 py-0.5 rounded-md text-[10px] font-semibold transition shrink-0 border ${
                         activeStudioPill === s.label
                           ? 'bg-amber-500 text-neutral-950 border-amber-400 font-bold'
-                          : 'bg-neutral-950/80 text-neutral-400 border-neutral-800 hover:text-white hover:border-neutral-700'
+                          : 'bg-neutral-950/80 text-neutral-400 border-neutral-800'
                       }`}
                     >
                       {s.label}
@@ -717,10 +712,10 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
                     <button
                       key={e.label}
                       onClick={() => handleToggleEraPill(e)}
-                      className={`px-2 py-0.5 rounded-lg text-[11px] font-semibold transition shrink-0 border ${
+                      className={`px-1.5 py-0.5 rounded-md text-[10px] font-semibold transition shrink-0 border ${
                         activeEraPill === e.label
                           ? 'bg-amber-500 text-neutral-950 border-amber-400 font-bold'
-                          : 'bg-neutral-950/80 text-neutral-400 border-neutral-800 hover:text-white hover:border-neutral-700'
+                          : 'bg-neutral-950/80 text-neutral-400 border-neutral-800'
                       }`}
                     >
                       {e.label}
@@ -728,64 +723,63 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
                   ))}
                 </div>
 
-                {/* Inline Quick Clue Input */}
-                <form onSubmit={handleApplyMiniClue} className="flex items-center justify-center gap-1.5 max-w-md mx-auto">
-                  <div className="relative flex-1">
-                    <Search className="w-3 h-3 text-neutral-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                <form onSubmit={handleApplyMiniClue} className="flex items-center gap-1.5">
+                  <div className="relative flex-1 min-w-0">
+                    <Search className="w-3 h-3 text-neutral-500 absolute left-2 top-1/2 -translate-y-1/2" />
                     <input
                       type="text"
                       value={miniClueText}
                       onChange={(e) => setMiniClueText(e.target.value)}
-                      placeholder="Type actor, character, or plot clue..."
-                      className="w-full pl-7 pr-2 py-1 rounded-lg bg-neutral-950 border border-neutral-800 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-amber-500"
+                      placeholder="Clue: actor, character, plot…"
+                      className="w-full pl-6 pr-2 py-1 rounded-lg bg-neutral-950 border border-neutral-800 text-[11px] text-white placeholder-neutral-500 focus:outline-none focus:border-amber-500"
                     />
                   </div>
-                  {miniClueText && (
+                  {miniClueText ? (
                     <button
                       type="submit"
-                      className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-neutral-950 text-xs font-bold transition shrink-0 shadow"
+                      className="px-2 py-1 rounded-lg bg-amber-500 text-neutral-950 text-[10px] font-bold shrink-0"
                     >
                       Add
                     </button>
-                  )}
+                  ) : null}
                 </form>
               </div>
 
-              {/* 4 Answers — always at the same vertical spot */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 shrink-0">
+              {/* Answers: always one row — Yes left … No right */}
+              <div className="grid grid-cols-4 gap-1.5 sm:gap-2 pt-2 shrink-0">
                 <button
                   disabled={isQueryingTMDb}
                   onClick={() => handleAnswer('yes')}
-                  className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-emerald-950/70 border border-emerald-500/60 hover:border-emerald-400 hover:bg-emerald-900/80 text-emerald-300 hover:text-white transition active:scale-95 font-bold text-xs sm:text-sm shadow disabled:opacity-50"
+                  className="flex items-center justify-center gap-1 py-2.5 px-1 rounded-xl bg-emerald-950/70 border border-emerald-500/60 text-emerald-300 font-bold text-[11px] sm:text-sm shadow disabled:opacity-50 active:scale-95"
                 >
-                  <Check className="w-3.5 h-3.5 text-emerald-400 stroke-[3]" />
+                  <Check className="w-3.5 h-3.5 text-emerald-400 stroke-[3] shrink-0" />
                   <span>Yes</span>
                 </button>
 
                 <button
                   disabled={isQueryingTMDb}
                   onClick={() => handleAnswer('sometimes')}
-                  className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-amber-950/70 border border-amber-500/60 hover:border-amber-400 hover:bg-amber-900/80 text-amber-300 hover:text-white transition active:scale-95 font-bold text-xs sm:text-sm shadow disabled:opacity-50"
+                  className="flex items-center justify-center gap-1 py-2.5 px-1 rounded-xl bg-amber-950/70 border border-amber-500/60 text-amber-300 font-bold text-[11px] sm:text-sm shadow disabled:opacity-50 active:scale-95"
                 >
-                  <HelpCircle className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Sometimes</span>
+                  <HelpCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                  <span className="truncate">Maybe</span>
                 </button>
 
                 <button
                   disabled={isQueryingTMDb}
                   onClick={() => handleAnswer('skip')}
-                  className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-neutral-800/90 border border-neutral-700 hover:border-neutral-600 hover:bg-neutral-700 text-neutral-300 hover:text-white transition active:scale-95 font-semibold text-xs sm:text-sm shadow disabled:opacity-50"
+                  className="flex items-center justify-center gap-1 py-2.5 px-1 rounded-xl bg-neutral-800/90 border border-neutral-700 text-neutral-300 font-semibold text-[11px] sm:text-sm shadow disabled:opacity-50 active:scale-95"
                 >
-                  <Minus className="w-3.5 h-3.5 text-neutral-400" />
-                  <span>Not sure</span>
+                  <Minus className="w-3.5 h-3.5 text-neutral-400 shrink-0" />
+                  <span className="truncate">Skip</span>
                 </button>
 
                 <button
                   disabled={isQueryingTMDb}
                   onClick={() => handleAnswer('no')}
-                  className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-red-950/70 border border-red-600/60 hover:border-red-500 hover:bg-red-900/80 text-red-300 hover:text-white transition active:scale-95 font-bold text-xs sm:text-sm shadow disabled:opacity-50"
+                  className="flex items-center justify-center gap-1 py-2.5 px-1 rounded-xl bg-red-950/70 border border-red-600/60 text-red-300 font-bold text-[11px] sm:text-sm shadow disabled:opacity-50 active:scale-95"
                 >
-                  <XCircle className="w-3.5 h-3.5 text-red-400" />
+                  <XCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />
                   <span>No</span>
                 </button>
               </div>
@@ -811,65 +805,58 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
           )}
         </div>
 
-        {/* ── COMPACT ACTOR FACES ROW (MINIMAL VERTICAL SPACE) ── */}
+        {/* Actors: compact photo strip — many visible on mobile */}
         {candidateActors.length > 0 && displayedCandidates.length > 1 && (
-          <div className="bg-neutral-900/80 border border-neutral-800 rounded-xl px-3 py-1.5 flex items-center gap-2 overflow-x-auto no-scrollbar">
-            <span className="text-[11px] font-bold text-neutral-400 shrink-0">Recognize actor?</span>
-            <div className="flex items-center gap-2 flex-1 overflow-x-auto no-scrollbar">
+          <div className="bg-neutral-900/80 border border-neutral-800 rounded-xl px-2 py-1.5 flex items-center gap-1.5 min-w-0">
+            <span className="text-[10px] font-bold text-neutral-500 shrink-0">Actors</span>
+            <div className="flex items-center gap-1.5 flex-1 min-w-0 overflow-x-auto no-scrollbar">
               {candidateActors.map((actor) => (
                 <button
                   key={actor.id}
                   type="button"
                   onClick={() => handleSelectActorFace(actor)}
-                  className="group flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-neutral-950 border border-neutral-800 hover:border-amber-400 hover:bg-neutral-900 transition shrink-0 shadow-sm"
+                  className="group flex flex-col items-center gap-0.5 shrink-0 w-11 sm:w-auto sm:flex-row sm:gap-1.5 sm:px-2 sm:py-0.5 sm:rounded-full sm:bg-neutral-950 sm:border sm:border-neutral-800"
                   title={`Click if ${actor.name} is in your movie!`}
                 >
                   <img
                     src={actor.profile_path}
                     alt={actor.name}
-                    className="w-6 h-6 rounded-full object-cover border border-neutral-700 group-hover:border-amber-400"
+                    className="w-9 h-9 sm:w-6 sm:h-6 rounded-full object-cover border border-neutral-700 group-hover:border-amber-400"
                   />
-                  <span className="text-[11px] font-semibold text-neutral-300 group-hover:text-amber-400 whitespace-nowrap">
+                  <span className="hidden sm:inline text-[11px] font-semibold text-neutral-300 group-hover:text-amber-400 whitespace-nowrap">
                     {actor.name}
+                  </span>
+                  <span className="sm:hidden text-[8px] text-neutral-500 truncate w-full text-center leading-tight">
+                    {actor.name.split(' ').pop()}
                   </span>
                 </button>
               ))}
             </div>
-            {/* Working "None of these" button */}
             <button
               onClick={handleRejectAllActors}
-              className="text-[11px] text-neutral-400 hover:text-red-400 shrink-0 font-medium px-2 py-0.5 rounded-lg bg-neutral-950 border border-neutral-800 transition"
+              className="text-[10px] text-neutral-500 hover:text-red-400 shrink-0 font-medium px-1.5 py-0.5 rounded-md border border-neutral-800"
               title="Eliminates all movies starring any of these actors"
             >
-              None of these ✕
+              None
             </button>
           </div>
         )}
 
-        {/* ── LIVE MATCHED MOVIES BROWSER (FULL SCREEN SPACE FOR MOVIES) ── */}
+        {/* ── LIVE MATCHED MOVIES BROWSER ── */}
         <div className="space-y-2 pt-1">
-          {/* Subheader with title filter for instant testing */}
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1.5 px-1">
-            <div className="flex items-center gap-2">
-              <h3 className="text-white font-extrabold text-xs sm:text-sm">
-                Matching Candidates
-              </h3>
-              <span className="px-2 py-0.2 rounded-full bg-emerald-500/20 text-emerald-400 text-[11px] font-bold border border-emerald-500/30">
-                {displayedCandidates.length}
-              </span>
-              <span className="text-neutral-500 text-[11px] hidden sm:inline">
-                (Click any movie to select!)
-              </span>
-            </div>
+          <div className="flex flex-row items-center justify-between gap-2 px-1">
+            <h3 className="text-white font-extrabold text-xs sm:text-sm truncate">
+              Candidates
+            </h3>
 
             {/* Quick search input within the current matches */}
-            <div className="relative w-full sm:w-56">
+            <div className="relative flex-1 max-w-[12rem] sm:max-w-none sm:w-56 shrink">
               <Search className="w-3 h-3 text-neutral-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
                 value={filterWithinText}
                 onChange={(e) => setFilterWithinText(e.target.value)}
-                placeholder="Filter results by title..."
+                placeholder="Filter titles…"
                 className="w-full pl-7 pr-6 py-1 rounded-lg bg-neutral-900 border border-neutral-800 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-amber-500"
               />
               {filterWithinText && (
