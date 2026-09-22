@@ -93,6 +93,9 @@ export class TMDbClient {
     yearLte?: string;
     runtimeLte?: number;
     runtimeGte?: number;
+    withKeywords?: string;
+    certificationCountry?: string;
+    certificationLte?: string;
     watchProviderId?: number;
     watchRegion?: string;
     releaseFormat?: 'all' | 'dvd' | 'theatrical';
@@ -137,6 +140,12 @@ export class TMDbClient {
     }
     if (options.runtimeGte) {
       url += `&with_runtime.gte=${options.runtimeGte}`;
+    }
+    if (options.withKeywords) {
+      url += `&with_keywords=${encodeURIComponent(options.withKeywords)}`;
+    }
+    if (options.certificationCountry && options.certificationLte) {
+      url += `&certification_country=${options.certificationCountry}&certification.lte=${encodeURIComponent(options.certificationLte)}`;
     }
 
     if (options.watchProviderId) {

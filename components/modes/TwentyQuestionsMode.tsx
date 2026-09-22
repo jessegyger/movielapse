@@ -87,23 +87,27 @@ const QUESTION_BANK: QuestionDef[] = [
   },
   {
     id: 5,
-    question: 'Setting vibe?',
+    question: 'Where is it set?',
     options: [
-      { label: 'City / neon', tag: 'neon_noir', icon: '🌧️' },
-      { label: 'Sunny / beach', tag: 'summer', icon: '☀️' },
-      { label: 'Woods / cabin', tag: 'cabin', icon: '🌲' },
       { label: 'Space', tag: 'space', icon: '🚀' },
+      { label: 'Big city', tag: 'city', icon: '🏙️' },
+      { label: 'Small town', tag: 'small_town', icon: '🏡' },
+      { label: 'Beach / island', tag: 'summer', icon: '🏖️' },
+      { label: 'Woods / cabin', tag: 'cabin', icon: '🌲' },
+      { label: 'School', tag: 'school', icon: '🎒' },
+      { label: 'War / battlefield', tag: 'warzone', icon: '⚔️' },
+      { label: 'Fantasy world', tag: 'fantasy_world', icon: '🧙' },
       { label: "Don't care", tag: 'setting_any', icon: '🎲' },
     ],
   },
   {
     id: 6,
-    question: 'Plot style?',
+    question: 'How should the story feel?',
     options: [
-      { label: 'Twisty', tag: 'complex', icon: '🧩' },
-      { label: 'Straightforward', tag: 'direct', icon: '🎯' },
-      { label: 'Open ending', tag: 'ambiguous', icon: '💭' },
+      { label: 'Twisty mystery', tag: 'complex', icon: '🧩' },
+      { label: 'Simple & clear', tag: 'direct', icon: '🎯' },
       { label: 'Feel-good', tag: 'feelgood', icon: '☀️' },
+      { label: 'Edge-of-seat', tag: 'shock', icon: '😬' },
       { label: "Don't care", tag: 'plot_any', icon: '🎲' },
     ],
   },
@@ -111,8 +115,9 @@ const QUESTION_BANK: QuestionDef[] = [
     id: 7,
     question: 'Tonight I want to…',
     options: [
-      { label: 'Be shocked', tag: 'shock', icon: '🤯' },
-      { label: 'Feel stuff', tag: 'emotional', icon: '❤️' },
+      { label: 'Laugh', tag: 'goal_laugh', icon: '😂' },
+      { label: 'Get scared', tag: 'goal_scare', icon: '😱' },
+      { label: 'Feel emotions', tag: 'emotional', icon: '❤️' },
       { label: 'Get pumped', tag: 'hype', icon: '🔥' },
       { label: 'Chill out', tag: 'relax', icon: '🛋️' },
       { label: "Don't care", tag: 'goal_any', icon: '🎲' },
@@ -120,45 +125,53 @@ const QUESTION_BANK: QuestionDef[] = [
   },
   {
     id: 8,
-    question: 'Who are you with?',
+    question: 'Rating OK with?',
     options: [
-      { label: 'Solo', tag: 'solo', icon: '🎧' },
-      { label: 'Date night', tag: 'date', icon: '🥂' },
-      { label: 'Friends', tag: 'friends', icon: '🍿' },
-      { label: 'Family', tag: 'family', icon: '🏠' },
-      { label: "Don't care", tag: 'crowd_any', icon: '🎲' },
+      { label: 'G / PG (everyone)', tag: 'rate_g', icon: '🟢' },
+      { label: 'Up to PG-13', tag: 'rate_pg13', icon: '🟡' },
+      { label: 'Up to R', tag: 'rate_r', icon: '🟠' },
+      { label: 'Anything (incl. adult)', tag: 'rate_any', icon: '🔴' },
+      { label: "Don't care", tag: 'rate_skip', icon: '🎲' },
     ],
   },
   {
     id: 9,
-    question: 'Dealbreakers?',
+    question: 'Content vibes?',
     options: [
       { label: 'No gore', tag: 'no_gore', icon: '🚫' },
-      { label: 'Nothing too sad', tag: 'no_tragedy', icon: '🚫' },
-      { label: 'No cheesy romance', tag: 'no_cliches', icon: '🚫' },
-      { label: 'Anything goes', tag: 'raw', icon: '🔥' },
+      { label: 'Lots of gore', tag: 'lots_gore', icon: '🩸' },
+      { label: 'Nothing too sad', tag: 'no_tragedy', icon: '🌤️' },
+      { label: 'Super sad', tag: 'super_sad', icon: '😢' },
+      { label: 'No nudity', tag: 'no_nudity', icon: '👕' },
+      { label: 'Lots of nudity', tag: 'lots_nudity', icon: '🔥' },
+      { label: 'Anything goes', tag: 'raw', icon: '💥' },
       { label: "Don't care", tag: 'deal_any', icon: '🎲' },
     ],
   },
   {
     id: 10,
-    question: 'Tone?',
+    question: 'Overall mood?',
     options: [
-      { label: 'Dark / sharp', tag: 'satire', icon: '🖤' },
-      { label: 'Warm', tag: 'warm', icon: '🌅' },
-      { label: 'Nostalgic', tag: 'nostalgia', icon: '🍂' },
-      { label: 'Weird / dreamy', tag: 'surreal', icon: '🔮' },
+      { label: 'Funny', tag: 'mood_funny', icon: '😄' },
+      { label: 'Scary', tag: 'mood_scary', icon: '👻' },
+      { label: 'Romantic', tag: 'mood_romantic', icon: '💘' },
+      { label: 'Serious', tag: 'mood_serious', icon: '🎭' },
+      { label: 'Light & fun', tag: 'mood_light', icon: '🎈' },
+      { label: 'Dark', tag: 'mood_dark', icon: '🌑' },
       { label: "Don't care", tag: 'tone_any', icon: '🎲' },
     ],
   },
   {
     id: 11,
-    question: 'Lead character?',
+    question: 'Who is the lead?',
     options: [
+      { label: 'Boy / man', tag: 'lead_male', icon: '👨' },
+      { label: 'Girl / woman', tag: 'lead_female', icon: '👩' },
+      { label: 'Boy & girl duo', tag: 'lead_duo_mf', icon: '👫' },
+      { label: 'Friends / group', tag: 'duo', icon: '👥' },
       { label: 'Antihero', tag: 'antihero', icon: '⚖️' },
       { label: 'Regular person', tag: 'reluctant', icon: '🧑' },
       { label: 'Genius / obsessed', tag: 'obsessive', icon: '🔬' },
-      { label: 'Buddy / group', tag: 'duo', icon: '🤝' },
       { label: "Don't care", tag: 'hero_any', icon: '🎲' },
     ],
   },
@@ -178,50 +191,87 @@ const GENRE_TMDB: Record<string, number> = {
 
 const PAGE_SIZE = 24;
 const FOUND_THRESHOLD = 3;
-const MIN_QS_BEFORE_FOUND = 4;
-const INITIAL_PAGES = 12; // ~240 titles loaded; TMDb total shown separately
+const MIN_QS_BEFORE_FOUND = 5;
+const INITIAL_PAGES = 12;
 const ANIMATION_GENRE = 16;
 const FAMILY_GENRE = 10751;
+
+/** TMDb keyword ids — pipe = OR. Verified: space, outer space, astronaut, spacecraft, deep space */
+const KW_SPACE = '9882|252634|14626|1612|209280';
+const KW_FOREST = '233960|156326';
+const KW_BEACH = '966|13088';
+const KW_SCHOOL = '339|14544';
+const KW_WAR = '14643|1701';
+
+const SETTING_TAGS = [
+  'space',
+  'cabin',
+  'summer',
+  'city',
+  'small_town',
+  'school',
+  'warzone',
+  'fantasy_world',
+] as const;
 
 function isSpaceMovie(movie: Movie): boolean {
   const title = (movie.title || '').toLowerCase();
   const text = `${movie.overview || ''} ${movie.tagline || ''}`.toLowerCase();
-  const genres = movie.genres || [];
   const blob = `${title} ${text}`;
-  // Strong space signals
   if (
-    /\b(outer space|spaceship|spacecraft|astronaut|nasa|orbit|galaxy|interstellar|mars|moon landing|space station|starship|wormhole|deep space|zero gravity|in space|into space|from space)\b/i.test(
+    /\b(outer space|spaceship|spacecraft|astronaut|nasa|orbit|galaxy|interstellar|space station|starship|wormhole|deep space|zero[- ]gravity|space travel|space mission|on mars|to mars|the moon|lunar|cosmo(?:s|naut))\b/i.test(
       blob
     )
   ) {
     return true;
   }
-  // Title says Space + sci-fi (Spaceballs, Space Oddity… not Office Space)
-  if (/\bspace\b/i.test(title) && genres.includes('Science Fiction')) return true;
-  // Sci-fi overview that clearly mentions space travel / planets
-  if (
-    genres.includes('Science Fiction') &&
-    /\b(space|orbit|astronaut|galaxy|alien|mars|lunar|cosmos)\b/i.test(text)
-  ) {
-    return true;
-  }
+  // Title-level space + sci-fi (Gravity, Ad Astra, etc.)
+  if (/\b(space|mars|apollo|gravity|ad astra|interstellar|martian)\b/i.test(title)) return true;
+  if ((movie.genres || []).includes('Science Fiction') && /\bspace\b/i.test(blob)) return true;
   return false;
 }
 
 function isCabinMovie(movie: Movie): boolean {
   const text = `${movie.title} ${movie.overview || ''}`.toLowerCase();
-  return /\b(cabin|forest|woods|wilderness|isolated|mountain|rural)\b/i.test(text);
+  return /\b(cabin|forest|woods|wilderness|woodland)\b/i.test(text);
 }
 
 function isSummerMovie(movie: Movie): boolean {
   const text = `${movie.title} ${movie.overview || ''}`.toLowerCase();
-  return /\b(summer|beach|coast|island|vacation|sunlit|seaside)\b/i.test(text);
+  return /\b(beach|island|coast|seaside|tropical|vacation)\b/i.test(text);
 }
 
-function isNeonCityMovie(movie: Movie): boolean {
+function isCityMovie(movie: Movie): boolean {
   const text = `${movie.title} ${movie.overview || ''}`.toLowerCase();
-  return /\b(neon|noir|cyber|cyberpunk|rain-soaked|metropolis|city nightlife)\b/i.test(text)
-    || (/\bcity\b/i.test(text) && /\b(detective|crime|night)\b/i.test(text));
+  return /\b(new york|los angeles|chicago|london|tokyo|city|urban|metropolis|downtown)\b/i.test(text);
+}
+
+function isSmallTownMovie(movie: Movie): boolean {
+  const text = `${movie.title} ${movie.overview || ''}`.toLowerCase();
+  return /\b(small town|suburb|rural|village|hometown)\b/i.test(text);
+}
+
+function isSchoolMovie(movie: Movie): boolean {
+  const text = `${movie.title} ${movie.overview || ''}`.toLowerCase();
+  return /\b(school|high school|college|university|campus|student|classmate)\b/i.test(text);
+}
+
+function isWarMovie(movie: Movie): boolean {
+  const genres = movie.genres || [];
+  if (genres.includes('War')) return true;
+  const text = `${movie.title} ${movie.overview || ''}`.toLowerCase();
+  return /\b(war|battlefield|soldier|combat|wwii|world war|military)\b/i.test(text);
+}
+
+function isFantasyWorldMovie(movie: Movie): boolean {
+  const genres = movie.genres || [];
+  if (genres.includes('Fantasy')) return true;
+  const text = `${movie.title} ${movie.overview || ''}`.toLowerCase();
+  return /\b(kingdom|magic|wizard|dragon|quest|enchanted|fairy)\b/i.test(text);
+}
+
+function textHas(movie: Movie, re: RegExp): boolean {
+  return re.test(`${movie.title} ${movie.overview || ''} ${movie.tagline || ''}`);
 }
 
 function scoreMovie(movie: Movie, tags: string[]): number {
@@ -253,10 +303,14 @@ function scoreMovie(movie: Movie, tags: string[]): number {
   if (tags.includes('era_80s') && releaseYear >= 1980 && releaseYear <= 1989) score += 10;
   if (tags.includes('era_classic') && releaseYear > 0 && releaseYear < 1980) score += 10;
 
-  if (tags.includes('space') && isSpaceMovie(movie)) score += 16;
-  if (tags.includes('neon_noir') && isNeonCityMovie(movie)) score += 8;
-  if (tags.includes('cabin') && isCabinMovie(movie)) score += 8;
-  if (tags.includes('summer') && isSummerMovie(movie)) score += 8;
+  if (tags.includes('space') && isSpaceMovie(movie)) score += 20;
+  if (tags.includes('cabin') && isCabinMovie(movie)) score += 12;
+  if (tags.includes('summer') && isSummerMovie(movie)) score += 12;
+  if (tags.includes('city') && isCityMovie(movie)) score += 10;
+  if (tags.includes('small_town') && isSmallTownMovie(movie)) score += 10;
+  if (tags.includes('school') && isSchoolMovie(movie)) score += 12;
+  if (tags.includes('warzone') && isWarMovie(movie)) score += 14;
+  if (tags.includes('fantasy_world') && isFantasyWorldMovie(movie)) score += 12;
 
   if (tags.includes('complex') && /twist|mystery|memory|puzzle/i.test(movieText)) score += 5;
   if (tags.includes('direct') && genres.includes('Action')) score += 3;
@@ -265,22 +319,30 @@ function scoreMovie(movie: Movie, tags: string[]): number {
   if (tags.includes('hype') && genres.includes('Action')) score += 5;
   if (tags.includes('emotional') && genres.includes('Drama')) score += 5;
   if (tags.includes('relax') && !genres.includes('Horror')) score += 3;
+  if (tags.includes('goal_laugh') && genres.includes('Comedy')) score += 10;
+  if (tags.includes('goal_scare') && genres.includes('Horror')) score += 12;
 
   if (tags.includes('want_animated') && isAnimated(movie)) score += 14;
   if (tags.includes('want_kids') && isKidsFriendly(movie)) score += 12;
   if (tags.includes('want_adult') && !isAnimated(movie) && !genres.includes('Family')) score += 4;
 
-  if (tags.includes('family') && genres.some((g) => ['Family', 'Animation'].includes(g))) score += 6;
-  if (tags.includes('date') && genres.some((g) => ['Romance', 'Comedy'].includes(g))) score += 4;
+  if (tags.includes('mood_funny') && genres.includes('Comedy')) score += 10;
+  if (tags.includes('mood_scary') && genres.includes('Horror')) score += 12;
+  if (tags.includes('mood_romantic') && genres.includes('Romance')) score += 10;
+  if (tags.includes('mood_serious') && genres.includes('Drama')) score += 8;
+  if (tags.includes('mood_light') && !genres.includes('Horror') && !genres.includes('War')) score += 5;
+  if (tags.includes('mood_dark') && (genres.includes('Horror') || genres.includes('Thriller') || /dark|grim/i.test(movieText))) score += 6;
 
-  if (tags.includes('no_gore') && genres.includes('Horror')) score -= 20;
-  if (tags.includes('no_tragedy') && /tragic|grief|death of/i.test(movieText)) score -= 8;
-  if (tags.includes('no_cliches') && genres.includes('Romance')) score -= 5;
+  if (tags.includes('lead_female') && textHas(movie, /\b(she|her|woman|girl|daughter|mother|wife)\b/i)) score += 4;
+  if (tags.includes('lead_male') && textHas(movie, /\b(he|him|man|boy|son|father|husband)\b/i)) score += 3;
+  if (tags.includes('lead_duo_mf') && textHas(movie, /\b(couple|partners|he and she|boyfriend|girlfriend)\b/i)) score += 5;
 
-  if (tags.includes('satire') && /dark|satire|cynical/i.test(movieText)) score += 3;
-  if (tags.includes('warm') && genres.includes('Drama')) score += 3;
-  if (tags.includes('nostalgia') && releaseYear > 0 && releaseYear < 2005) score += 3;
-  if (tags.includes('surreal') && /dream|surreal|weird/i.test(movieText)) score += 4;
+  if (tags.includes('no_gore') && genres.includes('Horror')) score -= 25;
+  if (tags.includes('lots_gore') && (genres.includes('Horror') || textHas(movie, /\b(gore|bloody|slaughter|grisly)\b/i))) score += 10;
+  if (tags.includes('no_tragedy') && textHas(movie, /\b(tragic|grief|dies|death of|suicide)\b/i)) score -= 12;
+  if (tags.includes('super_sad') && (genres.includes('Drama') || textHas(movie, /\b(tragic|grief|loss|heartbreak)\b/i))) score += 8;
+  if (tags.includes('no_nudity') && textHas(movie, /\b(erotic|nude|nudity|sexual)\b/i)) score -= 15;
+  if (tags.includes('lots_nudity') && textHas(movie, /\b(erotic|sensual|affair|seduc)\b/i)) score += 8;
 
   return score;
 }
@@ -323,16 +385,20 @@ function hardPasses(movie: Movie, tags: string[]): boolean {
   if (tags.includes('era_80s') && !(releaseYear >= 1980 && releaseYear <= 1989)) return false;
   if (tags.includes('era_classic') && !(releaseYear > 0 && releaseYear < 1980)) return false;
 
-  // Pace is soft only — list endpoints rarely include runtime, so hard-cutting
-  // "short" was wiping almost everything down to a few seed titles.
+  // Pace is soft only — list endpoints rarely include runtime
 
-  if (tags.includes('no_gore') && genres.includes('Horror')) return false;
+  if (tags.includes('no_gore') && genres.includes('Horror') && textHas(movie, /\b(gore|slasher|grisly|gory)\b/i)) return false;
+  if (tags.includes('lots_gore') && !genres.includes('Horror') && !textHas(movie, /\b(gore|bloody|violence|slasher)\b/i)) return false;
+  if (tags.includes('super_sad') && !genres.includes('Drama') && !textHas(movie, /\b(tragic|grief|loss|heartbreak|dies)\b/i)) return false;
+  if (tags.includes('no_tragedy') && textHas(movie, /\b(tragic|grief|suicide|terminal illness)\b/i)) return false;
+  if (tags.includes('no_nudity') && textHas(movie, /\b(erotic|nudity|nude|pornographic)\b/i)) return false;
 
-  // Setting answers are HARD filters — Space must actually be space
-  if (tags.includes('space') && !isSpaceMovie(movie)) return false;
-  if (tags.includes('cabin') && !isCabinMovie(movie)) return false;
-  if (tags.includes('summer') && !isSummerMovie(movie)) return false;
-  if (tags.includes('neon_noir') && !isNeonCityMovie(movie)) return false;
+  // Settings: keyword-backed ones (space/cabin/summer/school/war) are narrowed by TMDb
+  // discover — don't also hard-kill on overview text (that used to empty the list → full-pool fallback).
+  // City / small town / fantasy still need client text filters.
+  if (tags.includes('city') && !isCityMovie(movie)) return false;
+  if (tags.includes('small_town') && !isSmallTownMovie(movie)) return false;
+  if (tags.includes('fantasy_world') && !isFantasyWorldMovie(movie)) return false;
 
   return true;
 }
@@ -342,6 +408,11 @@ type PoolQuery = {
   withoutGenreIds?: number[];
   runtimeLte?: number;
   runtimeGte?: number;
+  yearGte?: string;
+  yearLte?: string;
+  withKeywords?: string;
+  certificationCountry?: string;
+  certificationLte?: string;
 };
 
 function poolQueryFromTags(tags: string[]): PoolQuery {
@@ -357,9 +428,58 @@ function poolQueryFromTags(tags: string[]): PoolQuery {
   if (tags.includes('want_adult')) {
     q.withoutGenreIds = [ANIMATION_GENRE, FAMILY_GENRE];
   }
-  if (tags.includes('space') && !q.genreId) q.genreId = GENRE_TMDB.scifi;
+
+  if (tags.includes('era_2020s')) {
+    q.yearGte = '2020-01-01';
+  } else if (tags.includes('era_2010s')) {
+    q.yearGte = '2010-01-01';
+    q.yearLte = '2019-12-31';
+  } else if (tags.includes('era_2000s')) {
+    q.yearGte = '2000-01-01';
+    q.yearLte = '2009-12-31';
+  } else if (tags.includes('era_90s')) {
+    q.yearGte = '1990-01-01';
+    q.yearLte = '1999-12-31';
+  } else if (tags.includes('era_80s')) {
+    q.yearGte = '1980-01-01';
+    q.yearLte = '1989-12-31';
+  } else if (tags.includes('era_classic')) {
+    q.yearLte = '1979-12-31';
+  }
+
+  if (tags.includes('space')) {
+    if (!q.genreId) q.genreId = GENRE_TMDB.scifi;
+    q.withKeywords = KW_SPACE;
+  }
+  if (tags.includes('cabin')) q.withKeywords = KW_FOREST;
+  if (tags.includes('summer')) q.withKeywords = KW_BEACH;
+  if (tags.includes('school')) q.withKeywords = KW_SCHOOL;
+  if (tags.includes('warzone')) {
+    q.genreId = 10752; // War
+    q.withKeywords = KW_WAR;
+  }
+  if (tags.includes('fantasy_world') && !q.genreId) q.genreId = 14; // Fantasy
+
   if (tags.includes('short')) q.runtimeLte = 110;
   if (tags.includes('epic')) q.runtimeGte = 140;
+
+  if (tags.includes('rate_g')) {
+    q.certificationCountry = 'US';
+    q.certificationLte = 'PG';
+  } else if (tags.includes('rate_pg13')) {
+    q.certificationCountry = 'US';
+    q.certificationLte = 'PG-13';
+  } else if (tags.includes('rate_r')) {
+    q.certificationCountry = 'US';
+    q.certificationLte = 'R';
+  }
+
+  if (tags.includes('mood_funny') && !q.genreId) q.genreId = GENRE_TMDB.comedy;
+  if (tags.includes('mood_scary') && !q.genreId) q.genreId = GENRE_TMDB.horror;
+  if (tags.includes('mood_romantic') && !q.genreId) q.genreId = GENRE_TMDB.romance;
+  if (tags.includes('goal_laugh') && !q.genreId) q.genreId = GENRE_TMDB.comedy;
+  if (tags.includes('goal_scare') && !q.genreId) q.genreId = GENRE_TMDB.horror;
+
   return q;
 }
 
@@ -381,6 +501,11 @@ async function fetchDiscoverPages(
         withoutGenreIds: query.withoutGenreIds,
         runtimeLte: query.runtimeLte,
         runtimeGte: query.runtimeGte,
+        yearGte: query.yearGte,
+        yearLte: query.yearLte,
+        withKeywords: query.withKeywords,
+        certificationCountry: query.certificationCountry,
+        certificationLte: query.certificationLte,
         sortBy: 'popularity.desc',
       })
     )
@@ -392,8 +517,14 @@ async function fetchDiscoverPages(
     batch.results.forEach((m) => map.set(String(m.id), m));
   }
 
-  // Only blend seeds when browsing broadly (no genre lock)
-  if (!query.genreId && !query.withoutGenreIds?.length) {
+  // Only blend seeds when browsing broadly — never when keywords/years lock the pool
+  if (
+    !query.genreId &&
+    !query.withoutGenreIds?.length &&
+    !query.withKeywords &&
+    !query.yearGte &&
+    !query.yearLte
+  ) {
     tmdb.getSeedMovies().forEach((m) => {
       if (!map.has(String(m.id))) map.set(String(m.id), m);
     });
@@ -428,7 +559,17 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
       nextTags.length === 0
         ? pool
         : pool.filter((m) => hardPasses(m, nextTags));
-    const working = filtered.length > 0 ? filtered : pool;
+    // NEVER fall back to the unfiltered pool when a hard setting/content tag is on —
+    // that made Space look like "no change" and kept the 20k+ count.
+    const hasHardNarrow = nextTags.some((t) =>
+      (
+        SETTING_TAGS as readonly string[]
+      ).includes(t) ||
+      ['no_gore', 'lots_gore', 'no_tragedy', 'super_sad', 'no_nudity', 'want_animated', 'want_kids', 'want_adult'].includes(t) ||
+      t.startsWith('era_')
+    );
+    const working =
+      filtered.length > 0 ? filtered : hasHardNarrow ? filtered : pool;
     const scored = working
       .map((movie) => ({ movie, score: scoreMovie(movie, nextTags) }))
       .sort((a, b) => b.score - a.score)
@@ -439,20 +580,34 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
   }, []);
 
   const loadPoolForTags = useCallback(
-    async (tags: string[], reset = true) => {
+    async (tags: string[]) => {
       const query = poolQueryFromTags(tags);
       activeQueryRef.current = query;
       setIsLoadingPool(true);
-      const { movies, totalResults, totalPages } = await fetchDiscoverPages(
-        query,
-        1,
-        INITIAL_PAGES
-      );
+      // Settings need more pages so keyword/hard filters still leave a real list
+      const pagesToFetch = tags.some((t) => (SETTING_TAGS as readonly string[]).includes(t))
+        ? 24
+        : INITIAL_PAGES;
+      const { movies, totalResults, totalPages } = await fetchDiscoverPages(query, 1, pagesToFetch);
       setMoviePool(movies);
-      setCatalogTotal(totalResults > 0 ? totalResults : movies.length);
       setMaxPages(totalPages);
-      setNextPage(INITIAL_PAGES + 1);
+      setNextPage(pagesToFetch + 1);
       const scored = recompute(movies, tags);
+      // Keyword/year/cert discover totals already narrowed — use them.
+      // Client-only setting text filters: show filtered length so Space isn't stuck at 20k+.
+      const clientOnlySetting = tags.some((t) =>
+        ['city', 'small_town', 'fantasy_world', 'no_gore', 'lots_gore', 'no_tragedy', 'super_sad', 'no_nudity'].includes(
+          t
+        )
+      );
+      const keywordLocked = Boolean(query.withKeywords);
+      if (clientOnlySetting && !keywordLocked) {
+        setCatalogTotal(scored.length);
+      } else if (totalResults > 0) {
+        setCatalogTotal(totalResults);
+      } else {
+        setCatalogTotal(scored.length);
+      }
       setIsLoadingPool(false);
       return scored;
     },
@@ -485,6 +640,9 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
     if (tight || finishedBank) {
       const winner = (tight ? hardLeft : scored)[0];
       setFoundMovie(winner);
+      if (typeof window !== 'undefined') {
+        window.scrollTo({ top: 0, behavior: 'auto' });
+      }
       confetti({
         particleCount: 120,
         spread: 80,
@@ -558,22 +716,22 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
   // ── Found celebration ──
   if (foundMovie) {
     return (
-      <div className="w-full max-w-lg mx-auto h-[calc(100vh-7.5rem)] flex flex-col items-center justify-center p-4 gap-4 animate-fade-in">
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-bold">
+      <div className="w-full max-w-3xl mx-auto max-h-[calc(100dvh-5rem)] overflow-y-auto overscroll-contain px-3 sm:px-4 pt-3 sm:pt-4 pb-10 flex flex-col items-center gap-4 animate-fade-in scroll-mt-20">
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-bold shrink-0">
           <Sparkles className="w-3.5 h-3.5" /> We found your movie
         </div>
         <button
           type="button"
           onClick={() => (onSelectMovie ? onSelectMovie(foundMovie) : onPlayTrailer(foundMovie))}
-          className="w-full max-w-xs flex flex-col items-center gap-3 group"
+          className="w-full max-w-xs flex flex-col items-center gap-3 group shrink-0"
         >
-          <div className="relative w-40 sm:w-48 aspect-[2/3] rounded-2xl overflow-hidden border-2 border-amber-400 shadow-2xl shadow-amber-500/20">
+          <div className="relative w-44 sm:w-52 aspect-[2/3] rounded-2xl overflow-hidden border-2 border-amber-400 shadow-2xl shadow-amber-500/20">
             {foundMovie.poster_path ? (
               <Image
                 src={foundMovie.poster_path}
                 alt={foundMovie.title}
                 fill
-                sizes="200px"
+                sizes="220px"
                 className="object-cover group-hover:scale-105 transition"
                 unoptimized={foundMovie.poster_path.startsWith('http')}
               />
@@ -586,7 +744,7 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
             </p>
           </div>
         </button>
-        <div className="flex gap-2">
+        <div className="flex gap-2 shrink-0">
           <button
             type="button"
             onClick={() => onPlayTrailer(foundMovie)}
@@ -603,22 +761,25 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
           </button>
         </div>
         {ranked.length > 1 ? (
-          <div className="w-full mt-2 max-w-md">
-            <p className="text-[10px] uppercase font-bold text-neutral-500 mb-1.5 text-center">Also close</p>
-            <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">
-              {ranked.slice(1, 13).map((m, i) => (
+          <div className="w-full mt-2">
+            <p className="text-[10px] uppercase font-bold text-neutral-500 mb-2 text-center">Also close</p>
+            <div className="flex gap-3 overflow-x-auto pb-2 px-1 snap-x snap-mandatory" style={{ scrollbarWidth: 'thin' }}>
+              {ranked.slice(1, 30).map((m, i) => (
                 <button
                   key={m.id}
                   type="button"
                   onClick={() => (onSelectMovie ? onSelectMovie(m) : onPlayTrailer(m))}
-                  className="relative aspect-[2/3] rounded-md overflow-hidden border border-neutral-700 hover:border-amber-400 transition"
+                  className="relative shrink-0 w-28 sm:w-36 aspect-[2/3] rounded-xl overflow-hidden border border-neutral-700 hover:border-amber-400 transition snap-start bg-neutral-900"
                   title={m.title}
                 >
                   {m.poster_path ? (
-                    <Image src={m.poster_path} alt="" fill sizes="80px" className="object-cover" unoptimized />
+                    <Image src={m.poster_path} alt={m.title} fill sizes="144px" className="object-cover" unoptimized />
                   ) : null}
-                  <span className="absolute top-0.5 left-0.5 text-[8px] font-black bg-black/70 text-amber-300 px-0.5 rounded">
+                  <span className="absolute top-1 left-1 text-[10px] font-black bg-black/75 text-amber-300 px-1 rounded">
                     #{i + 2}
+                  </span>
+                  <span className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/90 to-transparent px-1.5 pt-5 pb-1.5 text-[11px] font-semibold text-white line-clamp-2 text-left">
+                    {m.title}
                   </span>
                 </button>
               ))}
@@ -630,7 +791,7 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
   }
 
   return (
-    <div className="w-full max-w-7xl mx-auto h-[calc(100vh-7.5rem)] max-h-[calc(100vh-7.5rem)] overflow-hidden flex flex-col p-2 sm:p-3 gap-2">
+    <div className="w-full max-w-7xl mx-auto h-[calc(100dvh-5rem)] max-h-[calc(100dvh-5rem)] overflow-hidden flex flex-col p-2 sm:p-3 gap-2">
       {/* Thin progress — no 6/12 mode */}
       <div className="flex items-center gap-2 shrink-0">
         <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider shrink-0">
@@ -684,7 +845,8 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
         <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
           {currentQ.options.map((opt) => {
             const isSelected = answers[currentStep]?.tag === opt.tag;
-            const isDontCare = opt.tag === 'any' || opt.tag.endsWith('_any');
+            const isDontCare =
+              opt.tag === 'any' || opt.tag.endsWith('_any') || opt.tag.endsWith('_skip');
             const spanFull = isDontCare && currentQ.options.length % 2 === 1;
             return (
               <button
@@ -739,22 +901,22 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
               <Loader2 className="w-4 h-4 animate-spin" /> Loading movies…
             </div>
           ) : (
-            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5 sm:gap-3">
               {visible.map((movie, i) => (
                 <button
                   key={movie.id}
                   type="button"
                   onClick={() => (onSelectMovie ? onSelectMovie(movie) : onPlayTrailer(movie))}
                   title={movie.title}
-                  className="flex flex-col gap-1 min-w-0 text-left group"
+                  className="flex flex-col gap-1.5 min-w-0 text-left group"
                 >
-                  <div className="relative w-full aspect-[2/3] rounded-lg overflow-hidden border border-neutral-700 group-hover:border-amber-400 transition bg-neutral-900">
+                  <div className="relative w-full aspect-[2/3] rounded-xl overflow-hidden border border-neutral-700 group-hover:border-amber-400 transition bg-neutral-900">
                     {movie.poster_path ? (
                       <Image
                         src={movie.poster_path}
                         alt={movie.title}
                         fill
-                        sizes="120px"
+                        sizes="(max-width:640px) 45vw, (max-width:1024px) 22vw, 180px"
                         className="object-cover"
                         unoptimized={movie.poster_path.startsWith('http')}
                       />
@@ -763,11 +925,11 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
                         {movie.title.slice(0, 1)}
                       </span>
                     )}
-                    <span className="absolute top-1 left-1 text-[9px] font-black bg-black/75 text-amber-300 px-1 rounded">
+                    <span className="absolute top-1.5 left-1.5 text-[10px] font-black bg-black/75 text-amber-300 px-1 rounded">
                       #{i + 1}
                     </span>
                   </div>
-                  <span className="text-[10px] sm:text-[11px] font-semibold text-neutral-200 truncate leading-tight px-0.5">
+                  <span className="text-xs sm:text-sm font-semibold text-neutral-200 line-clamp-2 leading-tight px-0.5">
                     {movie.title}
                   </span>
                 </button>
