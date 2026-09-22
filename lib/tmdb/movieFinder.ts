@@ -598,34 +598,34 @@ const GENRE_TMDB_IDS: Record<string, string> = {
   Western: '37',
 };
 
-/** Human, single-focus wording for genre forks grounded in the remaining pool */
+/** Fact questions about the movie you're thinking of — worded for Akinator-style guessing */
 const GENRE_CLUSTER_COPY: Record<
   string,
   { question: string; hint: string; label: string }
 > = {
   Animation: {
     label: 'animated',
-    question: 'Looking at what’s left — is it an animated movie?',
+    question: 'Is the movie you are thinking of animated?',
     hint: 'Hand-drawn, CGI, stop-motion, or anime',
   },
   Comedy: {
     label: 'comedies',
-    question: 'Among the remaining matches, is comedy the main point?',
-    hint: 'Built to make you laugh more than tense or cry',
+    question: 'Is it primarily a comedy?',
+    hint: 'Made mainly to make you laugh',
   },
   Horror: {
     label: 'horror',
-    question: 'From what’s left — are you after something scary?',
-    hint: 'Horror meant to frighten or unsettle',
+    question: 'Is it a horror movie?',
+    hint: 'Designed to scare or unsettle',
   },
   Action: {
     label: 'action',
-    question: 'Do the remaining picks lean action — fights, chases, set pieces?',
+    question: 'Is it an action movie with fights, chases, or set pieces?',
     hint: 'Kinetic spectacle over quiet drama',
   },
   Thriller: {
     label: 'thrillers',
-    question: 'Is it more of a suspense thriller than a straight drama?',
+    question: 'Is it a suspense thriller?',
     hint: 'Tension, dread, and plot pressure',
   },
   Romance: {
@@ -635,18 +635,18 @@ const GENRE_CLUSTER_COPY: Record<
   },
   'Science Fiction': {
     label: 'sci-fi',
-    question: 'Among these, is it science fiction?',
+    question: 'Is it a science fiction movie?',
     hint: 'Futuristic tech, speculative worlds, sci-fi ideas',
   },
   Fantasy: {
     label: 'fantasy',
-    question: 'Does it live in a fantasy world — magic, myths, unreal realms?',
+    question: 'Does it take place in a fantasy world with magic or myths?',
     hint: 'Wizards, creatures, enchanted settings',
   },
   Crime: {
     label: 'crime',
     question: 'Does it revolve around crime, cops, or the underworld?',
-    hint: 'Heists, gangsters, investigations with teeth',
+    hint: 'Heists, gangsters, or criminal investigation',
   },
   Mystery: {
     label: 'mysteries',
@@ -655,27 +655,27 @@ const GENRE_CLUSTER_COPY: Record<
   },
   War: {
     label: 'war films',
-    question: 'Is it set in a military war with soldiers on the front?',
+    question: 'Is it set during a military war with soldiers?',
     hint: 'Combat, wartime stakes',
   },
   Family: {
     label: 'family films',
-    question: 'Is it aimed at a family / all-ages audience?',
-    hint: 'Safe for kids or multi-generational watch',
+    question: 'Is it a family / all-ages movie?',
+    hint: 'Aimed at kids or multi-generational audiences',
   },
   Adventure: {
     label: 'adventure',
-    question: 'Is it more of a big adventure / quest film?',
+    question: 'Is it a big adventure or quest film?',
     hint: 'Journeys, exploration, discovery',
   },
   Drama: {
     label: 'dramas',
-    question: 'Is it primarily a character drama rather than pure genre thrills?',
+    question: 'Is it primarily a character drama?',
     hint: 'Emotion and relationships over spectacle',
   },
   Music: {
     label: 'musicals',
-    question: 'Do characters break into song, or is music the spine of the story?',
+    question: 'Do characters break into song, or is music central to the story?',
     hint: 'Musical numbers or music-world stories',
   },
   History: {
@@ -690,7 +690,7 @@ const GENRE_CLUSTER_COPY: Record<
   },
   Documentary: {
     label: 'documentaries',
-    question: 'Is it a documentary rather than a fictional story?',
+    question: 'Is it a documentary rather than fiction?',
     hint: 'Non-fiction',
   },
 };
@@ -757,13 +757,13 @@ export function getNarrowingInsight(
   const labels = dominant.map((g) => GENRE_CLUSTER_COPY[g]?.label || g.toLowerCase());
   let hint: string;
   if (questionCount === 0) {
-    hint = `Starting broad · ${movies.length} live matches`;
+    hint = `Guessing from ${movies.length} live matches`;
   } else if (labels.length >= 2) {
-    hint = `Narrowing toward ${labels[0]} & ${labels[1]}${eraBit ? ` · ${eraBit}` : ''} · ${movies.length} left`;
+    hint = `Candidates lean ${labels[0]} & ${labels[1]}${eraBit ? ` · ${eraBit}` : ''} · ${movies.length} left`;
   } else if (labels.length === 1) {
-    hint = `Zeroing in on ${labels[0]}${eraBit ? ` · ${eraBit}` : ''} · ${movies.length} left`;
+    hint = `Honing in on ${labels[0]}${eraBit ? ` · ${eraBit}` : ''} · ${movies.length} left`;
   } else {
-    hint = `Reading the remaining set · ${movies.length} matches`;
+    hint = `Still narrowing the title · ${movies.length} matches`;
   }
 
   return { hint, dominantLabels: labels, candidateCount: movies.length };
@@ -853,9 +853,9 @@ export function generateClusterQuestion(
             label: 'era',
             question: {
               id,
-              question: `Looking at what’s left — was it released in ${median} or earlier?`,
-              hint: 'Splits the shortlist by release year',
-              focusHint: `Era fork around ${median}`,
+              question: `Was the movie released in ${median} or earlier?`,
+              hint: 'Helps divide remaining candidates by year',
+              focusHint: `Era split around ${median}`,
               isEra: true,
               match: (m) => (Number(m.release_date?.slice(0, 4) || 0) <= median ? 1.0 : 0.0),
               onYes: { primary_release_date_lte: `${median}-12-31` },
@@ -867,7 +867,7 @@ export function generateClusterQuestion(
     }
   }
 
-  // 3) Soft tone / plot axes from overview text (pool-aware)
+  // 3) Soft tone / plot axes from overview text (facts about the movie)
   const toneAxes: {
     id: string;
     label: string;
@@ -877,9 +877,9 @@ export function generateClusterQuestion(
   }[] = [
     {
       id: 'cluster_tone_dark',
-      label: 'darker tone',
-      question: 'Among these, are you craving something darker and heavier?',
-      hint: 'Bleak, intense, or emotionally bruising — not light comfort',
+      label: 'dark tone',
+      question: 'Is the movie dark, intense, or heavy in tone?',
+      hint: 'Bleak, brutal, tragic, or noir — not light comfort',
       test: (m) =>
         /\b(dark|bleak|brutal|revenge|murder|kill|violent|tragic|dystopia|noir)\b/i.test(
           `${m.title} ${m.overview || ''}`
@@ -889,8 +889,8 @@ export function generateClusterQuestion(
     {
       id: 'cluster_tone_feelgood',
       label: 'feel-good',
-      question: 'Want something warmer and more feel-good from this shortlist?',
-      hint: 'Uplifting, cozy, or hopeful rather than punishing',
+      question: 'Is it a warm, feel-good, or uplifting movie?',
+      hint: 'Heartwarming or hopeful rather than punishing',
       test: (m) =>
         /\b(heartwarming|uplifting|feel-good|friendship|family|inspiring|hope)\b/i.test(
           `${m.title} ${m.overview || ''}`
@@ -900,7 +900,7 @@ export function generateClusterQuestion(
     {
       id: 'cluster_plot_twist',
       label: 'mind-benders',
-      question: 'Are you after something mind-bending — twists, puzzles, unreliable reality?',
+      question: 'Does it have big twists, puzzles, or mind-bending reality?',
       hint: 'Puzzle-box plots and reality-bending turns',
       test: (m) =>
         /\b(twist|memory|dream|simulation|identity|timeline|reality|mind|puzzle)\b/i.test(
@@ -910,11 +910,18 @@ export function generateClusterQuestion(
     {
       id: 'cluster_based_true',
       label: 'true stories',
-      question: 'Should it be based on a true story or real events?',
+      question: 'Is it based on a true story or real events?',
       hint: 'Biographical or historically rooted',
       test: (m) =>
         (m.genres || []).some((g) => ['History', 'Documentary'].includes(g)) ||
         /\b(true story|based on|real events|biography)\b/i.test(`${m.title} ${m.overview || ''}`),
+    },
+    {
+      id: 'cluster_famous',
+      label: 'well-known',
+      question: 'Is it a widely known / famous movie most people have heard of?',
+      hint: 'Crowd-famous title vs deeper cut',
+      test: (m) => (m.vote_count || 0) >= 5000,
     },
   ];
 
@@ -953,8 +960,8 @@ export function generateClusterQuestion(
           label: 'runtime',
           question: {
             id,
-            question: `Is it a longer watch — over about ${medianRt} minutes?`,
-            hint: 'Helps separate tight films from sprawling ones',
+            question: `Is the runtime longer than about ${medianRt} minutes?`,
+            hint: 'Helps separate shorter films from longer ones',
             focusHint: `Runtime split near ${medianRt}m`,
             match: (m) => ((m.runtime || 105) > medianRt ? 1.0 : 0.0),
           },
@@ -968,13 +975,13 @@ export function generateClusterQuestion(
   return forks[0].question;
 }
 
-/** Early openers — human mood questions before we go surgical */
+/** Early fact openers for Akinator guessing (about the movie — not your mood) */
 const OPENER_QUESTIONS: WizardQuestion[] = [
   {
     id: 'opener_intense',
-    question: 'Are you in the mood for something intense tonight?',
-    hint: 'High stakes, tension, or adrenaline — not soft comfort',
-    focusHint: 'Reading tonight’s energy first',
+    question: 'Is the movie intense — high stakes, tension, or heavy conflict?',
+    hint: 'Thriller / action / horror energy vs light comfort',
+    focusHint: 'Checking tone of the title in your head',
     match: (m) => {
       const g = m.genres || [];
       if (g.some((x) => ['Thriller', 'Horror', 'Action', 'Crime', 'War'].includes(x))) return 1.0;
@@ -984,9 +991,9 @@ const OPENER_QUESTIONS: WizardQuestion[] = [
   },
   {
     id: 'opener_familiar',
-    question: 'Want something widely known — a title most people have heard of?',
-    hint: 'Crowd-famous vs deeper cuts',
-    focusHint: 'Familiarity check',
+    question: 'Is it a widely known movie most people would recognize?',
+    hint: 'Famous crowd title vs deeper cut',
+    focusHint: 'Checking how famous the title is',
     match: (m) => {
       const votes = m.vote_count || 0;
       if (votes >= 8000) return 1.0;
@@ -1038,8 +1045,9 @@ export function selectNextQuestion(
 }
 
 /**
- * Free “smart” picker — no WebLLM / cloud model required.
- * Order: mood openers → cluster forks from remaining set → classic bank split.
+ * Free Akinator picker — no WebLLM / cloud model required.
+ * Order: early fact openers → cluster forks from remaining candidates → classic bank split.
+ * All questions are about the movie in your head, not what you want to watch tonight.
  */
 export function selectSmartNextQuestion(
   scoredPool: ScoredMovie[],
@@ -1050,7 +1058,7 @@ export function selectSmartNextQuestion(
   const pool = topContenderMovies(scoredPool, questionCount < 3 ? 40 : 28);
   if (pool.length === 0) return null;
 
-  // First 1–2 turns: human openers when they still split the pool
+  // First 1–2 turns: broad factual openers when they still split the pool
   if (questionCount < 2) {
     for (const opener of OPENER_QUESTIONS) {
       if (askedIds.has(opener.id)) continue;
@@ -1065,7 +1073,7 @@ export function selectSmartNextQuestion(
     }
   }
 
-  // Prefer a question literally derived from what’s left
+  // Prefer a discriminative question derived from what's left in the candidate set
   const clustered = generateClusterQuestion(pool, askedIds, hasAnsweredEra);
   if (clustered) {
     const insight = getNarrowingInsight(pool, questionCount);
