@@ -21,6 +21,8 @@ type TabType = 'trending' | 'popular' | 'netflix' | 'top_rated' | 'curated' | 'l
 type SortOption = 'popularity.desc' | 'vote_average.desc' | 'primary_release_date.desc' | 'primary_release_date.asc' | 'title.asc';
 type YearOption = 'All' | '2020s' | '2010s' | '2000s' | '1990s' | '1980s' | '1970s' | 'classics';
 
+type TheatricalFilter = 'all' | 'hide_theatres' | 'theatres_only';
+
 export const ShelfMode: React.FC<ShelfModeProps> = ({
   onPlayTrailer,
   onLove,
@@ -32,7 +34,7 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
   allSeedMovies,
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('trending');
-  const [releaseFormat, setReleaseFormat] = useState<ReleaseFormat>('all');
+  const [theatricalFilter, setTheatricalFilter] = useState<TheatricalFilter>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchedQuery, setSearchedQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -76,43 +78,36 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
     }
   };
 
-  // Fetch movies from TMDb according to active tab, sort, genre, year or search
-  // Initialize release format from URL pathname / query params or localStorage
+  // Initialize theatrical filter from URL query params or localStorage
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const path = window.location.pathname.toLowerCase();
       const search = window.location.search.toLowerCase();
-      const saved = localStorage.getItem('movielapse_release_format');
+      const saved = localStorage.getItem('movielapse_theatre_filter');
 
-      if (path.includes('/dvd') || search.includes('format=dvd') || search.includes('release=dvd')) {
-        setReleaseFormat('dvd');
-      } else if (path.includes('/theatre') || path.includes('/theater') || search.includes('format=theatrical') || search.includes('format=theatre')) {
-        setReleaseFormat('theatrical');
-      } else if (saved === 'dvd' || saved === 'theatrical') {
-        setReleaseFormat(saved as ReleaseFormat);
+      if (path.includes('/theatre') || path.includes('/theater') || search.includes('format=theatrical') || search.includes('theatres=only')) {
+        setTheatricalFilter('theatres_only');
+      } else if (saved === 'hide_theatres' || saved === 'theatres_only') {
+        setTheatricalFilter(saved as TheatricalFilter);
       }
     }
   }, []);
 
-  const handleSelectFormat = (fmt: ReleaseFormat) => {
-    setReleaseFormat(fmt);
+  const handleTheatricalFilter = (fmt: TheatricalFilter) => {
+    setTheatricalFilter(fmt);
     if (typeof window !== 'undefined') {
-      localStorage.setItem('movielapse_release_format', fmt);
-      const targetPath = fmt === 'all' ? '/' : `/${fmt}`;
-      if (window.location.pathname !== targetPath) {
-        window.history.pushState(null, '', targetPath);
-      }
+      localStorage.setItem('movielapse_theatre_filter', fmt);
     }
   };
 
-  // Fetch movies from TMDb according to active tab, sort, genre, year, format or search
+  // Fetch movies from TMDb according to active tab, sort, genre, year, theatre filter or search
   const fetchMovies = useCallback(async (
     tab: TabType,
     query: string,
     genre: string,
     sort: SortOption,
     era: YearOption,
-    fmt: ReleaseFormat,
+    tf: TheatricalFilter,
     pageNum: number = 1,
     append: boolean = false
   ) => {
@@ -129,8 +124,8 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
     try {
       let data: { results: Movie[]; totalPages: number };
       if (query.trim()) {
-        data = await tmdb.searchMoviesPaged(query, pageNum, fmt);
-      } else if (sort !== 'popularity.desc' || genre !== 'All' || era !== 'All' || fmt !== 'all') {
+        data = await tmdb.searchMoviesPaged(query, pageNum, tf === 'theatres_only' ? 'theatrical' : 'all');
+      } else if (sort !== 'popularity.desc' || genre !== 'All' || era !== 'All' || tf === 'theatres_only') {
         const boundaries = getYearBoundaries(era);
         const genreId = genre !== 'All' ? GENRE_NAME_TO_ID[genre] : undefined;
         data = await tmdb.discoverMovies({
@@ -140,7 +135,7 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
           yearGte: boundaries.yearGte,
           yearLte: boundaries.yearLte,
           watchProviderId: tab === 'netflix' ? 8 : undefined,
-          releaseFormat: fmt,
+          releaseFormat: tf === 'theatres_only' ? 'theatrical' : undefined,
         });
       } else if (tab === 'netflix') {
         data = await tmdb.getNetflixMovies(pageNum);
@@ -171,12 +166,12 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
     }
   }, []);
 
-  // When tab, sort, genre, year, or release format changes, reset page and fetch
+  // When tab, sort, genre, year, or theatrical filter changes, reset page and fetch
   useEffect(() => {
     if (activeTab !== 'curated' && activeTab !== 'loved' && activeTab !== 'watchlist') {
-      fetchMovies(activeTab, searchQuery, selectedGenre, sortBy, selectedYear, releaseFormat, 1, false);
+      fetchMovies(activeTab, searchQuery, selectedGenre, sortBy, selectedYear, theatricalFilter, 1, false);
     }
-  }, [activeTab, selectedGenre, sortBy, selectedYear, releaseFormat, fetchMovies]);
+  }, [activeTab, selectedGenre, sortBy, selectedYear, theatricalFilter, fetchMovies]);
 
   // Enrich curated movies on mount/tab change
   useEffect(() => {
@@ -196,7 +191,7 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
       if (activeTab === 'curated') {
         setActiveTab('trending');
       }
-      fetchMovies(activeTab === 'curated' ? 'trending' : activeTab, clean, selectedGenre, sortBy, selectedYear, releaseFormat, 1, false);
+      fetchMovies(activeTab === 'curated' ? 'trending' : activeTab, clean, selectedGenre, sortBy, selectedYear, theatricalFilter, 1, false);
     } else {
       clearSearch();
     }
@@ -210,7 +205,7 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
       clearTimeout(searchTimeoutRef.current);
     }
     if (activeTab !== 'loved' && activeTab !== 'watchlist') {
-      fetchMovies(activeTab, '', selectedGenre, sortBy, selectedYear, releaseFormat, 1, false);
+      fetchMovies(activeTab, '', selectedGenre, sortBy, selectedYear, theatricalFilter, 1, false);
     }
   };
 
@@ -228,9 +223,9 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
         if (activeTab === 'curated') {
           setActiveTab('trending');
         }
-        fetchMovies(activeTab === 'curated' ? 'trending' : activeTab, clean, selectedGenre, sortBy, selectedYear, releaseFormat, 1, false);
+        fetchMovies(activeTab === 'curated' ? 'trending' : activeTab, clean, selectedGenre, sortBy, selectedYear, theatricalFilter, 1, false);
       } else {
-        fetchMovies(activeTab, '', selectedGenre, sortBy, selectedYear, releaseFormat, 1, false);
+        fetchMovies(activeTab, '', selectedGenre, sortBy, selectedYear, theatricalFilter, 1, false);
       }
     }, 400);
   };
@@ -238,8 +233,8 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
   // Next page loader
   const handleLoadMore = useCallback(() => {
     if (isLoadingMore || isLoading || page >= totalPages) return;
-    fetchMovies(activeTab, searchQuery, selectedGenre, sortBy, selectedYear, releaseFormat, page + 1, true);
-  }, [isLoadingMore, isLoading, page, totalPages, activeTab, searchQuery, selectedGenre, sortBy, selectedYear, releaseFormat, fetchMovies]);
+    fetchMovies(activeTab, searchQuery, selectedGenre, sortBy, selectedYear, theatricalFilter, page + 1, true);
+  }, [isLoadingMore, isLoading, page, totalPages, activeTab, searchQuery, selectedGenre, sortBy, selectedYear, theatricalFilter, fetchMovies]);
 
   // Infinite Auto-Lazy Loading via IntersectionObserver
   useEffect(() => {
@@ -275,11 +270,8 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
 
   // Client-side filtering & sorting for Curated, Loved, and Watchlist
   const filtered = baseMovies.filter((m) => {
-    let matchesFormat = true;
-    if (releaseFormat === 'dvd') matchesFormat = !!m.is_on_dvd;
-    else if (releaseFormat === 'theatrical') matchesFormat = !!m.is_in_theatres;
-
-    if (!matchesFormat) return false;
+    if (theatricalFilter === 'hide_theatres' && m.is_in_theatres) return false;
+    if (theatricalFilter === 'theatres_only' && !m.is_in_theatres) return false;
 
     if (activeTab === 'curated' || activeTab === 'loved' || activeTab === 'watchlist') {
       const matchesQuery =
@@ -580,95 +572,84 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
         </div>
       )}
 
-      {/* Release Format Switcher (All Formats | 📀 On DVD | 🎟️ In Theatres) */}
-      <div className="flex flex-wrap items-center justify-between gap-2.5 mb-3 p-2 rounded-xl bg-neutral-900/90 border border-neutral-800 shadow-sm">
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="text-xs font-semibold text-neutral-300 mr-1 flex items-center gap-1">
-            <Disc className="w-3.5 h-3.5 text-amber-400" /> Release Format:
-          </span>
-          <button
-            onClick={() => handleSelectFormat('all')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1 ${
-              releaseFormat === 'all'
-                ? 'bg-neutral-800 text-white shadow border border-neutral-700'
-                : 'text-neutral-400 hover:text-white'
-            }`}
-          >
-            All Formats
-          </button>
-          <button
-            onClick={() => handleSelectFormat('dvd')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
-              releaseFormat === 'dvd'
-                ? 'bg-amber-500 text-neutral-950 shadow-md shadow-amber-500/20'
-                : 'text-neutral-400 hover:text-white bg-neutral-950/60 border border-neutral-800/80 hover:border-neutral-700'
-            }`}
-          >
-            <span>📀 On DVD</span>
-          </button>
-          <button
-            onClick={() => handleSelectFormat('theatrical')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
-              releaseFormat === 'theatrical'
-                ? 'bg-red-600 text-white shadow-md shadow-red-600/30'
-                : 'text-neutral-400 hover:text-white bg-neutral-950/60 border border-neutral-800/80 hover:border-neutral-700'
-            }`}
-          >
-            <span>🎟️ In Theatres</span>
-          </button>
+      {/* Controls Bar: Sort, Era, and In-Theatres Toggle (All in one single compact line) */}
+      <div className="flex flex-wrap items-center justify-between gap-2.5 mb-3 p-2 rounded-xl bg-neutral-900/60 border border-neutral-800/80">
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-1.5 text-xs text-neutral-400">
+            <span className="flex items-center gap-1 font-semibold text-neutral-300">
+              <ArrowUpDown className="w-3.5 h-3.5 text-amber-400" /> Sort:
+            </span>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as SortOption)}
+              className="bg-neutral-950 border border-neutral-800 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-amber-500 font-medium"
+            >
+              <option value="popularity.desc">🔥 Most Popular</option>
+              <option value="vote_average.desc">⭐ Highest Rating</option>
+              <option value="primary_release_date.desc">📅 Newest First</option>
+              <option value="primary_release_date.asc">🎞️ Oldest First</option>
+              <option value="title.asc">🔤 A to Z</option>
+            </select>
+          </div>
+
+          <div className="flex items-center gap-1.5 text-xs text-neutral-400">
+            <span className="flex items-center gap-1 font-semibold text-neutral-300">
+              <Calendar className="w-3.5 h-3.5 text-amber-400" /> Era:
+            </span>
+            <select
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(e.target.value as YearOption)}
+              className="bg-neutral-950 border border-neutral-800 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-amber-500 font-medium"
+            >
+              {years.map((y) => (
+                <option key={y.value} value={y.value}>
+                  {y.label}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
-        {releaseFormat !== 'all' && (
-          <div className="flex items-center gap-2 text-xs">
-            <span className="text-amber-400/90 font-medium">
-              {releaseFormat === 'dvd'
-                ? '📀 Physical DVD / Blu-ray filter active'
-                : '🎟️ Cinema In-Theatres filter active'}
-            </span>
+        {/* Compact Theatres Filter Toggle - zero wasted vertical space */}
+        <div className="flex items-center gap-1.5 text-xs">
+          <span className="text-neutral-400 font-semibold flex items-center gap-1 text-[11px]">
+            <Ticket className="w-3.5 h-3.5 text-red-400" /> Theatres:
+          </span>
+          <div className="flex items-center p-0.5 rounded-lg bg-neutral-950 border border-neutral-800">
             <button
-              onClick={() => handleSelectFormat('all')}
-              className="text-[11px] text-neutral-400 hover:text-white underline font-medium"
+              onClick={() => handleTheatricalFilter('all')}
+              title="Show all movies"
+              className={`px-2 py-0.5 rounded text-[11px] font-semibold transition ${
+                theatricalFilter === 'all'
+                  ? 'bg-neutral-800 text-white shadow'
+                  : 'text-neutral-400 hover:text-white'
+              }`}
             >
-              Reset to All
+              All
+            </button>
+            <button
+              onClick={() => handleTheatricalFilter('hide_theatres')}
+              title="Remove movies currently in theatres (At Home / Streaming only)"
+              className={`px-2 py-0.5 rounded text-[11px] font-semibold transition ${
+                theatricalFilter === 'hide_theatres'
+                  ? 'bg-amber-500 text-neutral-950 font-bold shadow'
+                  : 'text-neutral-400 hover:text-white'
+              }`}
+            >
+              🏠 Hide Theatres
+            </button>
+            <button
+              onClick={() => handleTheatricalFilter('theatres_only')}
+              title="Show only movies currently playing in theatres"
+              className={`px-2 py-0.5 rounded text-[11px] font-semibold transition ${
+                theatricalFilter === 'theatres_only'
+                  ? 'bg-red-600 text-white font-bold shadow'
+                  : 'text-neutral-400 hover:text-white'
+              }`}
+            >
+              🎟️ In Theatres
             </button>
           </div>
-        )}
-      </div>
-
-      {/* Controls Bar: Sort Dropdown & Era Filter */}
-      <div className="flex flex-wrap items-center justify-between gap-2.5 mb-3 p-2 rounded-xl bg-neutral-900/60 border border-neutral-800/80">
-        <div className="flex items-center gap-2 text-xs text-neutral-400">
-          <span className="flex items-center gap-1 font-semibold text-neutral-300">
-            <ArrowUpDown className="w-3.5 h-3.5 text-amber-400" /> Sort By:
-          </span>
-          <select
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as SortOption)}
-            className="bg-neutral-950 border border-neutral-800 rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:border-amber-500 font-medium"
-          >
-            <option value="popularity.desc">🔥 Most Popular</option>
-            <option value="vote_average.desc">⭐ Highest Rating</option>
-            <option value="primary_release_date.desc">📅 Year: Newest First</option>
-            <option value="primary_release_date.asc">🎞️ Year: Oldest First</option>
-            <option value="title.asc">🔤 Title: A to Z</option>
-          </select>
-        </div>
-
-        <div className="flex items-center gap-2 text-xs text-neutral-400">
-          <span className="flex items-center gap-1 font-semibold text-neutral-300">
-            <Calendar className="w-3.5 h-3.5 text-amber-400" /> Era / Year:
-          </span>
-          <select
-            value={selectedYear}
-            onChange={(e) => setSelectedYear(e.target.value as YearOption)}
-            className="bg-neutral-950 border border-neutral-800 rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:border-amber-500 font-medium"
-          >
-            {years.map((y) => (
-              <option key={y.value} value={y.value}>
-                {y.label}
-              </option>
-            ))}
-          </select>
         </div>
       </div>
 

@@ -207,91 +207,73 @@ export const MovieCard: React.FC<MovieCardProps> = ({
             </p>
           )}
 
-          {/* Streaming Platforms Visible Row (Icon Only + Direct Clickable Links) */}
-          {movie.streaming_providers && movie.streaming_providers.length > 0 && movie.streaming_providers[0].name !== 'Available Online' ? (
-            <div className="mt-3 flex items-center gap-1.5 flex-wrap">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400 mr-0.5 flex items-center gap-1">
-                <Tv className="w-3 h-3 text-amber-400" /> Watch:
-              </span>
-              {movie.streaming_providers.slice(0, 4).map((p, idx) => {
-                const cfg = getStreamingBadgeConfig(p.name);
-                const logo = p.logo_path || cfg.icon;
-                const link = p.watch_url || `https://www.google.com/search?q=watch+${encodeURIComponent(movie.title)}+${encodeURIComponent(p.name)}`;
-                return (
-                  <a
-                    key={idx}
-                    href={link}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={(e) => e.stopPropagation()}
-                    title={`Watch "${movie.title}" on ${p.name}`}
-                    className="p-1 rounded-lg bg-neutral-800 hover:bg-neutral-700 border border-neutral-750 hover:border-amber-400 shadow-sm transition-all transform hover:scale-110 active:scale-95 flex items-center justify-center shrink-0"
-                  >
-                    {logo ? (
-                      <img
-                        src={logo}
-                        alt={p.name}
-                        className="w-5 h-5 rounded object-contain shrink-0"
-                      />
-                    ) : (
-                      <span className="text-[9px] font-bold px-1 text-white">{p.name.slice(0, 3)}</span>
-                    )}
-                  </a>
-                );
-              })}
-              {movie.streaming_providers.length > 4 && (
-                <span
-                  className="text-[10px] text-neutral-400 font-medium px-1.5 py-0.5 rounded bg-neutral-900 border border-neutral-800"
-                  title={movie.streaming_providers.slice(4).map((p) => p.name).join(', ')}
-                >
-                  +{movie.streaming_providers.length - 4}
-                </span>
-              )}
-            </div>
-          ) : (
-            <div className="mt-3 flex items-center gap-1.5 text-[11px] text-neutral-400 bg-neutral-950/70 py-1 px-2 rounded-lg border border-neutral-800/80">
-              <Tv className="w-3 h-3 text-amber-400/80 shrink-0" />
+          {/* Availability Row: In Theatres badge + Stream platform icons (Zero wasted space, no 'Watch:' label) */}
+          <div className="mt-3 flex items-center gap-1.5 flex-wrap">
+            {movie.is_in_theatres && (
               <a
-                href={`https://www.google.com/search?q=watch+${encodeURIComponent(movie.title)}+online`}
+                href={movie.theatre_tickets_url || `https://www.google.com/search?q=${encodeURIComponent(movie.title)}+movie+showtimes+tickets`}
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={(e) => e.stopPropagation()}
-                className="hover:text-amber-400 transition"
+                title={`In Theatres now - Get showtimes & tickets for ${movie.title}`}
+                className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-lg bg-red-950/80 border border-red-600/70 text-red-200 hover:bg-red-900 transition shadow-sm hover:scale-105 shrink-0"
               >
-                Check streaming online ↗
+                <span>🎟️ In Theatres ↗</span>
               </a>
-            </div>
-          )}
+            )}
 
-          {/* Release Medium Badges (In Theatres / DVD) */}
-          {(movie.is_in_theatres || movie.is_on_dvd) && (
-            <div className="mt-2.5 flex items-center gap-1.5 flex-wrap">
-              {movie.is_in_theatres && (
+            {movie.streaming_providers && movie.streaming_providers.length > 0 && movie.streaming_providers[0].name !== 'Available Online' ? (
+              <>
+                {movie.streaming_providers.slice(0, 4).map((p, idx) => {
+                  const cfg = getStreamingBadgeConfig(p.name);
+                  const logo = p.logo_path || cfg.icon;
+                  const link = p.watch_url || `https://www.google.com/search?q=watch+${encodeURIComponent(movie.title)}+${encodeURIComponent(p.name)}`;
+                  return (
+                    <a
+                      key={idx}
+                      href={link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      title={`Watch "${movie.title}" on ${p.name}`}
+                      className="p-1 rounded-lg bg-neutral-800 hover:bg-neutral-700 border border-neutral-750 hover:border-amber-400 shadow-sm transition-all transform hover:scale-110 active:scale-95 flex items-center justify-center shrink-0"
+                    >
+                      {logo ? (
+                        <img
+                          src={logo}
+                          alt={p.name}
+                          className="w-5 h-5 rounded object-contain shrink-0"
+                        />
+                      ) : (
+                        <span className="text-[9px] font-bold px-1 text-white">{p.name.slice(0, 3)}</span>
+                      )}
+                    </a>
+                  );
+                })}
+                {movie.streaming_providers.length > 4 && (
+                  <span
+                    className="text-[10px] text-neutral-400 font-medium px-1.5 py-0.5 rounded bg-neutral-900 border border-neutral-800"
+                    title={movie.streaming_providers.slice(4).map((p) => p.name).join(', ')}
+                  >
+                    +{movie.streaming_providers.length - 4}
+                  </span>
+                )}
+              </>
+            ) : !movie.is_in_theatres ? (
+              <div className="flex items-center gap-1.5 text-[11px] text-neutral-400 bg-neutral-950/70 py-1 px-2 rounded-lg border border-neutral-800/80">
+                <Tv className="w-3 h-3 text-amber-400/80 shrink-0" />
                 <a
-                  href={movie.theatre_tickets_url || `https://www.google.com/search?q=${encodeURIComponent(movie.title)}+movie+showtimes+tickets`}
+                  href={`https://www.google.com/search?q=watch+${encodeURIComponent(movie.title)}+online`}
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={(e) => e.stopPropagation()}
-                  title={`Playing in cinemas now - Find showtimes & tickets for ${movie.title}`}
-                  className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md bg-red-950/80 border border-red-600/70 text-red-200 hover:bg-red-900 transition shadow-sm hover:scale-105"
+                  className="hover:text-amber-400 transition"
                 >
-                  <span>🎟️ In Theatres ↗</span>
+                  Stream search ↗
                 </a>
-              )}
-              {movie.is_on_dvd && (
-                <a
-                  href={movie.dvd_buy_url || `https://www.amazon.com/s?k=${encodeURIComponent(movie.title)}+dvd+blu-ray&i=movies-tv`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={(e) => e.stopPropagation()}
-                  title={`Available on DVD / Blu-ray - Buy on Amazon`}
-                  className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-950/80 border border-amber-600/70 text-amber-200 hover:bg-amber-900 transition shadow-sm hover:scale-105"
-                >
-                  <span>📀 On DVD ↗</span>
-                </a>
-              )}
-            </div>
-          )}
+              </div>
+            ) : null}
+          </div>
         </div>
 
         {/* Action Buttons Footer */}
