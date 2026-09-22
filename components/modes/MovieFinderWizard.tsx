@@ -15,6 +15,7 @@ import {
   ChevronDown,
   Sparkles,
   UserCheck,
+  Undo2,
 } from 'lucide-react';
 import { Movie } from '@/lib/tmdb/types';
 import {
@@ -49,6 +50,40 @@ interface MovieFinderWizardProps {
 }
 
 const MAX_STANDARD_QUESTIONS = 20;
+
+/** Full wizard state so Undo can reverse an accidental answer. */
+type WizardSnapshot = {
+  filters: LiveDiscoverFilters;
+  allMovies: Map<string, Movie>;
+  scoredPool: ScoredMovie[];
+  currentQuestion: WizardQuestion | null;
+  askedIds: Set<string>;
+  questionCount: number;
+  history: { q: WizardQuestion; answer: WizardAnswer }[];
+  clueMatches: Set<string>;
+  rejectedActorIds: Set<number>;
+  hasAnsweredEra: boolean;
+  activeStudioPill: string;
+  activeEraPill: string;
+  candidateActors: ActorCandidate[];
+  currentPage: number;
+  tmdbMatchTotal: number | null;
+};
+
+function cloneFilters(f: LiveDiscoverFilters): LiveDiscoverFilters {
+  return {
+    with_genres: new Set(f.with_genres),
+    without_genres: new Set(f.without_genres),
+    with_keywords: new Set(f.with_keywords),
+    without_keywords: new Set(f.without_keywords),
+    with_companies: f.with_companies,
+    primary_release_date_gte: f.primary_release_date_gte,
+    primary_release_date_lte: f.primary_release_date_lte,
+    vote_count_gte: f.vote_count_gte,
+    vote_average_gte: f.vote_average_gte,
+    with_original_language: f.with_original_language,
+  };
+}
 
 const COMPACT_STUDIO_PILLS = [
   { label: 'Disney', companyId: '2|3' },
@@ -96,6 +131,69 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   /** Real TMDb total_results for current discover filters — updates as answers tighten filters */
   const [tmdbMatchTotal, setTmdbMatchTotal] = useState<number | null>(null);
+  const [undoStack, setUndoStack] = useState<WizardSnapshot[]>([]);
+
+  const pushUndoSnapshot = useCallback(() => {
+    const snap: WizardSnapshot = {
+      filters: cloneFilters(filters),
+      allMovies: new Map(allMovies),
+      scoredPool: [...scoredPool],
+      currentQuestion,
+      askedIds: new Set(askedIds),
+      questionCount,
+      history: [...history],
+      clueMatches: new Set(clueMatches),
+      rejectedActorIds: new Set(rejectedActorIds),
+      hasAnsweredEra,
+      activeStudioPill,
+      activeEraPill,
+      candidateActors: [...candidateActors],
+      currentPage,
+      tmdbMatchTotal,
+    };
+    setUndoStack((prev) => [...prev.slice(-19), snap]); // keep last 20
+  }, [
+    filters,
+    allMovies,
+    scoredPool,
+    currentQuestion,
+    askedIds,
+    questionCount,
+    history,
+    clueMatches,
+    rejectedActorIds,
+    hasAnsweredEra,
+    activeStudioPill,
+    activeEraPill,
+    candidateActors,
+    currentPage,
+    tmdbMatchTotal,
+  ]);
+
+  const handleUndo = useCallback(() => {
+    setUndoStack((prev) => {
+      if (prev.length === 0) return prev;
+      const next = [...prev];
+      const snap = next.pop()!;
+      setFilters(cloneFilters(snap.filters));
+      setAllMovies(new Map(snap.allMovies));
+      setScoredPool([...snap.scoredPool]);
+      setCurrentQuestion(snap.currentQuestion);
+      setAskedIds(new Set(snap.askedIds));
+      setQuestionCount(snap.questionCount);
+      setHistory([...snap.history]);
+      setClueMatches(new Set(snap.clueMatches));
+      setRejectedActorIds(new Set(snap.rejectedActorIds));
+      setHasAnsweredEra(snap.hasAnsweredEra);
+      setActiveStudioPill(snap.activeStudioPill);
+      setActiveEraPill(snap.activeEraPill);
+      setCandidateActors([...snap.candidateActors]);
+      setCurrentPage(snap.currentPage);
+      setTmdbMatchTotal(snap.tmdbMatchTotal);
+      setIsQueryingTMDb(false);
+      return next;
+    });
+  }, []);
 
   // Prevent background body scroll leak
   useEffect(() => {
@@ -121,6 +219,7 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
     setRejectedActorIds(new Set());
     setCurrentPage(1);
     setTmdbMatchTotal(null);
+    setUndoStack([]);
 
     const initFilters = createInitialFilters();
     setFilters(initFilters);
@@ -315,6 +414,8 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
     async (answer: WizardAnswer) => {
       if (!currentQuestion) return;
 
+      pushUndoSnapshot();
+
       const nextFilters: LiveDiscoverFilters = {
         with_genres: new Set(filters.with_genres),
         without_genres: new Set(filters.without_genres),
@@ -407,11 +508,13 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
       // Execute live query immediately (no double-click!)
       executeLiveQueryWithFilters(nextFilters, newHistory, newAsked, clueMatches, newCount, eraAnswered);
     },
-    [currentQuestion, filters, hasAnsweredEra, history, askedIds, questionCount, clueMatches, executeLiveQueryWithFilters]
+    [currentQuestion, filters, hasAnsweredEra, history, askedIds, questionCount, clueMatches, executeLiveQueryWithFilters, pushUndoSnapshot]
   );
 
   // ── CLICK ON ACTOR PICTURE: Instantly selects actor and narrows candidates! ──
   const handleSelectActorFace = (actor: ActorCandidate) => {
+    pushUndoSnapshot();
+
     const actorQ: WizardQuestion = {
       id: `actor_face_${actor.id}`,
       question: `Stars ${actor.name}`,
@@ -448,6 +551,8 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
 
   // ── NONE OF THESE ACTORS: Completely eliminates movies with these actors and clears photos! ──
   const handleRejectAllActors = () => {
+    pushUndoSnapshot();
+
     const rejectedIds = new Set(rejectedActorIds);
     candidateActors.forEach((a) => rejectedIds.add(a.id));
     setRejectedActorIds(rejectedIds);
@@ -491,6 +596,7 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
 
   // Optional Studio Pill (Right above Yes/No buttons)
   const handleToggleStudioPill = (companyId: string, label: string) => {
+    pushUndoSnapshot();
     if (activeStudioPill === label) {
       setActiveStudioPill('');
       const nextFilters = { ...filters, with_companies: undefined };
@@ -513,6 +619,7 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
 
   // Optional Era Pill (Right above Yes/No buttons)
   const handleToggleEraPill = (opt: { label: string; gte?: string; lte?: string }) => {
+    pushUndoSnapshot();
     if (activeEraPill === opt.label) {
       setActiveEraPill('');
       const nextFilters = { ...filters, primary_release_date_gte: undefined, primary_release_date_lte: undefined };
@@ -533,6 +640,7 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
     const clean = miniClueText.trim();
     if (!clean) return;
 
+    pushUndoSnapshot();
     setIsQueryingTMDb(true);
     const searchResults = await searchLiveTMDb(clean);
 
@@ -605,6 +713,7 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
     }
 
     if (nextQ) {
+      pushUndoSnapshot();
       setCurrentQuestion(nextQ);
     }
   };
@@ -635,6 +744,7 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
     setRejectedActorIds(new Set());
     setCurrentPage(1);
     setTmdbMatchTotal(null);
+    setUndoStack([]);
 
     const initFilters = createInitialFilters();
     setFilters(initFilters);
@@ -681,6 +791,15 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            onClick={handleUndo}
+            disabled={undoStack.length === 0 || isQueryingTMDb}
+            title="Undo last answer"
+            className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:border-amber-500/40 text-xs font-semibold transition disabled:opacity-40 disabled:pointer-events-none"
+          >
+            <Undo2 className="w-3 h-3" />
+            <span className="hidden sm:inline">Undo</span>
+          </button>
           <button
             onClick={handleReset}
             title="Reset wizard and start over"
