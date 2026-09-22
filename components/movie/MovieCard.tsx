@@ -93,8 +93,32 @@ export const MovieCard: React.FC<MovieCardProps> = ({
       return {
         bg: 'bg-neutral-900/90 text-neutral-100 border-neutral-600',
         badge: 'bg-neutral-800 text-white',
-        label: 'Apple TV+',
+        label: 'Apple TV',
         icon: 'https://image.tmdb.org/t/p/original/6uhKBfmtzFqOcLousHwZuzcrScK.jpg'
+      };
+    }
+    if (norm.includes('tubi')) {
+      return {
+        bg: 'bg-amber-950/90 text-amber-100 border-amber-600/70',
+        badge: 'bg-amber-600 text-black font-bold',
+        label: 'Tubi',
+        icon: 'https://image.tmdb.org/t/p/original/9dEuvA8wg5TSeFBZlPxSVxFdimJ.png'
+      };
+    }
+    if (norm.includes('pluto')) {
+      return {
+        bg: 'bg-neutral-800/90 text-neutral-100 border-neutral-600',
+        badge: 'bg-neutral-700 text-white',
+        label: 'Pluto TV',
+        icon: 'https://image.tmdb.org/t/p/original/fN4czqaMQNLeF6sSSIjGbAWzvwK.png'
+      };
+    }
+    if (norm.includes('youtube')) {
+      return {
+        bg: 'bg-red-950/90 text-red-100 border-red-600/70',
+        badge: 'bg-red-600 text-white',
+        label: 'YouTube',
+        icon: 'https://image.tmdb.org/t/p/original/peURlLlr8jggOwK53fJ5wdQl05y.jpg'
       };
     }
     return {
@@ -231,8 +255,8 @@ export const MovieCard: React.FC<MovieCardProps> = ({
             </div>
           ) : (
             <div className="mt-3 flex items-center gap-1.5 text-[11px] text-neutral-400 bg-neutral-950/70 py-1 px-2 rounded-lg border border-neutral-800/80">
-              <Tv className="w-3 h-3 text-amber-400 shrink-0" />
-              <span className="truncate">Available on major streaming platforms</span>
+              <Tv className="w-3 h-3 text-amber-400/80 shrink-0" />
+              <span className="truncate text-neutral-400">Streaming availability loading...</span>
             </div>
           )}
         </div>

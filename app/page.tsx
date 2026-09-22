@@ -41,9 +41,12 @@ export default function Home() {
   const [detectedLayout, setDetectedLayout] = useState<'mobile' | 'tablet' | 'desktop'>('desktop');
 
   useEffect(() => {
-    // Load seeds
+    // Load seeds and enrich with live regional providers
     const seeds = tmdb.getSeedMovies();
     setSeedMovies(seeds);
+    tmdb.enrichMoviesWithProviders(seeds, seeds.length).then((enriched) => {
+      setSeedMovies(enriched);
+    });
 
     // Restore Gemini Key if saved
     const savedGemini = localStorage.getItem('movielapse_gemini_api_key') || '';

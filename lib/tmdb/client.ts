@@ -68,9 +68,19 @@ export class TMDbClient {
     return this.apiKey;
   }
 
-  // Get seed movies (always works offline & out of the box)
+  // Get seed movies (always works offline & out of the box with verified providers and logos)
   getSeedMovies(): Movie[] {
-    return [...SEED_MOVIES];
+    return SEED_MOVIES.map((m) => ({
+      ...m,
+      streaming_providers: m.streaming_providers?.map((sp) => {
+        const clean = this.cleanProviderName(sp.name);
+        return {
+          ...sp,
+          name: clean,
+          logo_path: sp.logo_path || this.getProviderLogo(clean),
+        };
+      }),
+    }));
   }
 
   // Discover movies with sorting, genre, and year filters
@@ -184,46 +194,70 @@ export class TMDbClient {
       return this.getTrendingMovies(page);
     }
 
-    // 1. Check if the search query matches an actor or director
-    try {
-      const person = await this.searchPerson(clean);
-      if (person && person.movies && person.movies.length > 0) {
-        const pageSize = 20;
-        const startIndex = (page - 1) * pageSize;
-        const paged = person.movies.slice(startIndex, startIndex + pageSize);
-        const totalPages = Math.ceil(person.movies.length / pageSize);
-        if (paged.length > 0) {
-          return {
-            results: paged,
-            totalPages: Math.max(totalPages, 1),
-          };
-        }
-      }
-    } catch (err) {
-      console.warn('Person check in searchMoviesPaged failed', err);
-    }
+    // 1. Run TMDb movie search first
+    let movieResults: Movie[] = [];
+    let movieTotalPages = 1;
 
-    // 2. Query TMDb Movie Search
     try {
       const res = await fetch(
         `${TMDB_BASE_URL}/search/movie?api_key=${this.apiKey}&query=${encodeURIComponent(clean)}&page=${page}&include_adult=false`
       );
       if (res.ok) {
         const data = await res.json();
-        return {
-          results: (data.results || []).map((m: any) => this.formatTMDbMovie(m)),
-          totalPages: data.total_pages || 1,
-        };
+        movieResults = (data.results || []).map((m: any) => this.formatTMDbMovie(m));
+        movieTotalPages = data.total_pages || 1;
       }
     } catch (err) {
       console.warn('TMDb paged search failed', err);
     }
+
+    // Check if query is an exact match for a movie title (e.g. "moon" matches "Moon")
+    const cleanLower = clean.toLowerCase();
+    const hasExactMovieMatch = movieResults.some(
+      (m) => m.title.toLowerCase() === cleanLower
+    );
+
+    // If an exact movie title matches and query is a single word, prioritize movie search!
+    // Otherwise, check if this is an actor or director search (e.g. "Tom Cruise", "Jeff Bridges")
+    if (!hasExactMovieMatch || clean.includes(' ')) {
+      try {
+        const person = await this.searchPerson(clean);
+        if (person && person.movies && person.movies.length > 0) {
+          const personNameLower = person.name.toLowerCase();
+          const isExactPerson = personNameLower === cleanLower ||
+            ((person.popularity || 0) > 10 && personNameLower.includes(cleanLower) && clean.includes(' '));
+
+          if (isExactPerson || movieResults.length === 0) {
+            const pageSize = 20;
+            const startIndex = (page - 1) * pageSize;
+            const paged = person.movies.slice(startIndex, startIndex + pageSize);
+            const totalPages = Math.ceil(person.movies.length / pageSize);
+            if (paged.length > 0) {
+              return {
+                results: paged,
+                totalPages: Math.max(totalPages, 1),
+              };
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Person check in searchMoviesPaged failed', err);
+      }
+    }
+
+    if (movieResults.length > 0) {
+      return {
+        results: movieResults,
+        totalPages: movieTotalPages,
+      };
+    }
+
     const local = await this.searchMovies(clean);
     return { results: local, totalPages: 1 };
   }
 
   // Search for actor or director and fetch their full filmography
-  async searchPerson(name: string): Promise<{ id: number; name: string; department: string; movies: Movie[] } | null> {
+  async searchPerson(name: string): Promise<{ id: number; name: string; department: string; popularity?: number; movies: Movie[] } | null> {
     const cleanName = name.trim();
     if (!cleanName) return null;
 
@@ -234,8 +268,16 @@ export class TMDbClient {
       if (res.ok) {
         const data = await res.json();
         if (data.results && data.results.length > 0) {
-          const person = data.results[0];
-          if (person.popularity > 1.2 || person.name.toLowerCase().includes(cleanName.toLowerCase())) {
+          const cleanLower = cleanName.toLowerCase();
+          // Find the best person match: either exact name or most popular
+          const person = data.results.find((p: any) => p.name.toLowerCase() === cleanLower) || data.results[0];
+          const personLower = person.name.toLowerCase();
+
+          // Ensure it's a genuine match (exact name, or query with 2 words)
+          const isValidMatch = personLower === cleanLower ||
+            (person.popularity > 8 && personLower.includes(cleanLower) && cleanName.includes(' '));
+
+          if (isValidMatch) {
             const creditsRes = await fetch(
               `${TMDB_BASE_URL}/person/${person.id}/movie_credits?api_key=${this.apiKey}`
             );
@@ -249,9 +291,9 @@ export class TMDbClient {
               // Deduplicate and sort by popularity
               const seen = new Set<number>();
               const sorted = pool
-                .filter((m: any) => {
-                  if (!m.id || !m.poster_path || seen.has(m.id)) return false;
-                  seen.add(m.id);
+                .filter((item: any) => {
+                  if (!item.id || !item.poster_path || seen.has(item.id)) return false;
+                  seen.add(item.id);
                   return true;
                 })
                 .sort((a: any, b: any) => (b.popularity || 0) - (a.popularity || 0));
@@ -259,23 +301,18 @@ export class TMDbClient {
               movies = sorted.map((m: any) => this.formatTMDbMovie(m));
             }
 
-            if (movies.length === 0 && person.known_for) {
-              movies = person.known_for
-                .filter((item: any) => item.media_type === 'movie' && item.poster_path)
-                .map((m: any) => this.formatTMDbMovie(m));
-            }
-
             return {
               id: person.id,
               name: person.name,
               department: person.known_for_department || 'Acting',
+              popularity: person.popularity,
               movies,
             };
           }
         }
       }
     } catch (err) {
-      console.warn('TMDb person search error', err);
+      console.warn('searchPerson error', err);
     }
     return null;
   }
@@ -426,6 +463,23 @@ export class TMDbClient {
 
   private providersCache = new Map<number, StreamingProvider[]>();
 
+  // Normalize and clean up provider names for clear recognizable branding
+  cleanProviderName(raw: string): string {
+    const norm = raw.toLowerCase();
+    if (norm.includes('netflix')) return 'Netflix';
+    if (norm.includes('prime') || norm.includes('amazon')) return 'Prime Video';
+    if (norm.includes('disney')) return 'Disney+';
+    if (norm.includes('max') || norm.includes('hbo')) return 'Max';
+    if (norm.includes('hulu')) return 'Hulu';
+    if (norm.includes('apple')) return 'Apple TV';
+    if (norm.includes('paramount')) return 'Paramount+';
+    if (norm.includes('peacock')) return 'Peacock';
+    if (norm.includes('tubi')) return 'Tubi';
+    if (norm.includes('pluto')) return 'Pluto TV';
+    if (norm.includes('youtube')) return 'YouTube';
+    return raw;
+  }
+
   // Resolve official provider logo when TMDb returns null logo or for fallback
   getProviderLogo(providerName: string): string | undefined {
     const norm = providerName.toLowerCase();
@@ -438,6 +492,8 @@ export class TMDbClient {
     if (norm.includes('paramount')) return 'https://image.tmdb.org/t/p/original/fi83B1oztoS47xxcemFdPMhIzK.jpg';
     if (norm.includes('peacock')) return 'https://image.tmdb.org/t/p/original/8VCV78ehT9YImCcDTRAR292278b.jpg';
     if (norm.includes('youtube')) return 'https://image.tmdb.org/t/p/original/peURlLlr8jggOwK53fJ5wdQl05y.jpg';
+    if (norm.includes('pluto')) return 'https://image.tmdb.org/t/p/original/fN4czqaMQNLeF6sSSIjGbAWzvwK.png';
+    if (norm.includes('tubi')) return 'https://image.tmdb.org/t/p/original/9dEuvA8wg5TSeFBZlPxSVxFdimJ.png';
     return undefined;
   }
 
@@ -455,48 +511,40 @@ export class TMDbClient {
       const res = await fetch(`${TMDB_BASE_URL}/movie/${numId}/watch/providers?api_key=${this.apiKey}`);
       if (res.ok) {
         const data = await res.json();
-        const regData = data.results?.[targetRegion] || data.results?.['US'];
+        const regData = data.results?.[targetRegion] || data.results?.['US'] || (data.results ? Object.values(data.results)[0] : null) as any;
         if (!regData) return [];
 
         const providers: StreamingProvider[] = [];
+        const seen = new Set<string>();
 
-        // 1. Subscription streaming (Flatrate)
-        if (regData.flatrate && Array.isArray(regData.flatrate)) {
-          for (const p of regData.flatrate) {
-            providers.push({
-              name: p.provider_name,
-              logo_path: p.logo_path ? `${TMDB_IMG_BASE}${p.logo_path}` : this.getProviderLogo(p.provider_name),
-              type: 'stream'
-            });
-          }
-        }
-
-        // 2. Free or Ads
-        if (regData.ads && Array.isArray(regData.ads)) {
-          for (const p of regData.ads) {
-            if (!providers.some(existing => existing.name === p.provider_name)) {
+        const addProviders = (list: any[], type: 'stream' | 'rent' | 'buy') => {
+          if (!list || !Array.isArray(list)) return;
+          for (const p of list) {
+            const cleanName = this.cleanProviderName(p.provider_name);
+            if (!seen.has(cleanName)) {
+              seen.add(cleanName);
               providers.push({
-                name: `${p.provider_name} (Free w/ ads)`,
-                logo_path: p.logo_path ? `${TMDB_IMG_BASE}${p.logo_path}` : this.getProviderLogo(p.provider_name),
-                type: 'stream'
+                name: cleanName,
+                logo_path: p.logo_path ? `${TMDB_IMG_BASE}${p.logo_path}` : this.getProviderLogo(cleanName),
+                type
               });
             }
           }
+        };
+
+        // 1. Subscription streaming (Flatrate)
+        addProviders(regData.flatrate, 'stream');
+        // 2. Free or Ads
+        addProviders(regData.ads, 'stream');
+        // 3. Rent / Buy fallback
+        if (providers.length === 0) {
+          addProviders(regData.rent, 'rent');
+          addProviders(regData.buy, 'buy');
         }
 
-        // 3. Rent / Buy
-        if (providers.length === 0 && regData.rent && Array.isArray(regData.rent)) {
-          for (const p of regData.rent.slice(0, 3)) {
-            providers.push({
-              name: `${p.provider_name} (Rent/Buy)`,
-              logo_path: p.logo_path ? `${TMDB_IMG_BASE}${p.logo_path}` : this.getProviderLogo(p.provider_name),
-              type: 'rent'
-            });
-          }
-        }
-
-        this.providersCache.set(numId, providers);
-        return providers;
+        const topProviders = providers.slice(0, 3);
+        this.providersCache.set(numId, topProviders);
+        return topProviders;
       }
     } catch (e) {
       console.warn('Failed to fetch watch providers', e);
@@ -505,7 +553,7 @@ export class TMDbClient {
   }
 
   // Batch enrich movies with live verified watch providers
-  async enrichMoviesWithProviders(movies: Movie[], maxCount: number = 8): Promise<Movie[]> {
+  async enrichMoviesWithProviders(movies: Movie[], maxCount: number = 24): Promise<Movie[]> {
     if (!movies || movies.length === 0) return movies;
 
     const toProcess = movies.slice(0, maxCount);
@@ -513,10 +561,14 @@ export class TMDbClient {
       toProcess.map(async (movie) => {
         // If movie already has concrete providers with logos, ensure logos are filled
         if (movie.streaming_providers && movie.streaming_providers.length > 0 && movie.streaming_providers[0].name !== 'Available Online') {
-          const filled = movie.streaming_providers.map(sp => ({
-            ...sp,
-            logo_path: sp.logo_path || this.getProviderLogo(sp.name)
-          }));
+          const filled = movie.streaming_providers.map(sp => {
+            const clean = this.cleanProviderName(sp.name);
+            return {
+              ...sp,
+              name: clean,
+              logo_path: sp.logo_path || this.getProviderLogo(clean)
+            };
+          });
           return { ...movie, streaming_providers: filled };
         }
 
@@ -531,10 +583,14 @@ export class TMDbClient {
         // Check seed catalog for fallback providers
         const seedMatch = SEED_MOVIES.find(s => String(s.id) === String(movie.id) || s.title.toLowerCase() === movie.title.toLowerCase());
         if (seedMatch?.streaming_providers) {
-          const filled = seedMatch.streaming_providers.map(sp => ({
-            ...sp,
-            logo_path: sp.logo_path || this.getProviderLogo(sp.name)
-          }));
+          const filled = seedMatch.streaming_providers.map(sp => {
+            const clean = this.cleanProviderName(sp.name);
+            return {
+              ...sp,
+              name: clean,
+              logo_path: sp.logo_path || this.getProviderLogo(clean)
+            };
+          });
           return { ...movie, streaming_providers: filled };
         }
 
@@ -590,7 +646,7 @@ export class TMDbClient {
             trailer_key: trailer_key || local?.trailer_key,
             director: local?.director,
             cast: local?.cast,
-            streaming_providers: providers.length > 0 ? providers : (local?.streaming_providers || [{ name: "Available to Stream / Rent", type: "stream" }])
+            streaming_providers: providers.length > 0 ? providers : (local?.streaming_providers || undefined)
           };
         }
       } catch (err) {
@@ -606,6 +662,18 @@ export class TMDbClient {
       ? m.genres.map((g: any) => g.name)
       : (m.genre_ids ? m.genre_ids.map((id: number) => TMDB_GENRE_MAP[id]).filter(Boolean) : ['Cinema']);
 
+    const numId = Number(m.id);
+    const cachedProviders = !isNaN(numId) ? this.providersCache.get(numId) : undefined;
+    const local = SEED_MOVIES.find((s) => Number(s.id) === numId || s.title.toLowerCase() === (m.title || '').toLowerCase());
+    const seedProviders = local?.streaming_providers?.map(sp => {
+      const clean = this.cleanProviderName(sp.name);
+      return {
+        ...sp,
+        name: clean,
+        logo_path: sp.logo_path || this.getProviderLogo(clean)
+      };
+    });
+
     return {
       id: m.id,
       title: m.title || m.original_title || 'Untitled',
@@ -617,7 +685,7 @@ export class TMDbClient {
       release_date: m.release_date || "",
       vote_average: m.vote_average ? Math.round(m.vote_average * 10) / 10 : 7.5,
       genres: genres.length > 0 ? genres.slice(0, 3) : ["Feature Film"],
-      streaming_providers: [{ name: "Available Online", type: "stream" }]
+      streaming_providers: cachedProviders || seedProviders || undefined
     };
   }
 }

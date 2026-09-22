@@ -120,6 +120,14 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
       setTotalPages(data.totalPages);
       setLiveMovies((prev) => (append ? [...prev, ...data.results] : data.results));
       setPage(pageNum);
+
+      // Asynchronously enrich with verified streaming providers and logos
+      tmdb.enrichMoviesWithProviders(data.results, 24).then((enriched) => {
+        setLiveMovies((prev) => {
+          const map = new Map(enriched.map((m) => [String(m.id), m]));
+          return prev.map((m) => map.get(String(m.id)) || m);
+        });
+      });
     } catch (err) {
       console.warn('Failed to fetch movies in ShelfMode', err);
     } finally {
@@ -135,15 +143,28 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
     }
   }, [activeTab, selectedGenre, sortBy, selectedYear, fetchMovies]);
 
+  // Enrich curated movies on mount/tab change
+  useEffect(() => {
+    if (activeTab === 'curated' && allSeedMovies.length > 0) {
+      tmdb.enrichMoviesWithProviders(allSeedMovies, allSeedMovies.length);
+    }
+  }, [activeTab, allSeedMovies]);
+
   const executeSearch = (queryToSearch: string) => {
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current);
     }
-    setSearchedQuery(queryToSearch);
-    if (activeTab === 'curated' || activeTab === 'loved' || activeTab === 'watchlist') {
-      return;
+    const clean = queryToSearch.trim();
+    setSearchedQuery(clean);
+
+    if (clean) {
+      if (activeTab === 'curated') {
+        setActiveTab('trending');
+      }
+      fetchMovies(activeTab === 'curated' ? 'trending' : activeTab, clean, selectedGenre, sortBy, selectedYear, 1, false);
+    } else {
+      clearSearch();
     }
-    fetchMovies(activeTab, queryToSearch, selectedGenre, sortBy, selectedYear, 1, false);
   };
 
   const clearSearch = () => {
@@ -153,7 +174,7 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current);
     }
-    if (activeTab !== 'curated' && activeTab !== 'loved' && activeTab !== 'watchlist') {
+    if (activeTab !== 'loved' && activeTab !== 'watchlist') {
       fetchMovies(activeTab, '', selectedGenre, sortBy, selectedYear, 1, false);
     }
   };
@@ -166,12 +187,17 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
     }
 
     searchTimeoutRef.current = setTimeout(() => {
-      setSearchedQuery(val);
-      if (activeTab === 'curated' || activeTab === 'loved' || activeTab === 'watchlist') {
-        return;
+      const clean = val.trim();
+      setSearchedQuery(clean);
+      if (clean) {
+        if (activeTab === 'curated') {
+          setActiveTab('trending');
+        }
+        fetchMovies(activeTab === 'curated' ? 'trending' : activeTab, clean, selectedGenre, sortBy, selectedYear, 1, false);
+      } else {
+        fetchMovies(activeTab, '', selectedGenre, sortBy, selectedYear, 1, false);
       }
-      fetchMovies(activeTab, val, selectedGenre, sortBy, selectedYear, 1, false);
-    }, 450);
+    }, 400);
   };
 
   // Next page loader
@@ -200,10 +226,17 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
 
   // Determine movies to render
   let baseMovies: Movie[] = [];
-  if (activeTab === 'curated') baseMovies = allSeedMovies;
-  else if (activeTab === 'loved') baseMovies = lovedMovies;
-  else if (activeTab === 'watchlist') baseMovies = watchlistMovies;
-  else baseMovies = liveMovies;
+  if (searchedQuery.trim() || searchQuery.trim()) {
+    baseMovies = liveMovies;
+  } else if (activeTab === 'curated') {
+    baseMovies = allSeedMovies;
+  } else if (activeTab === 'loved') {
+    baseMovies = lovedMovies;
+  } else if (activeTab === 'watchlist') {
+    baseMovies = watchlistMovies;
+  } else {
+    baseMovies = liveMovies;
+  }
 
   // Client-side filtering & sorting for Curated, Loved, and Watchlist
   const filtered = baseMovies.filter((m) => {
