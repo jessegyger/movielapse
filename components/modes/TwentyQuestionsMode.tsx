@@ -7,12 +7,7 @@ import {
   RotateCcw,
   Check,
   Play,
-  ChevronRight,
-  ChevronLeft,
-  ChevronDown,
-  ChevronUp,
   Loader2,
-  SlidersHorizontal,
 } from 'lucide-react';
 import Image from 'next/image';
 import { Movie } from '@/lib/tmdb/types';
@@ -48,7 +43,7 @@ const QUESTION_BANK: QuestionDef[] = [
     options: [
       { label: 'Animated', tag: 'want_animated', icon: '🎨' },
       { label: 'Kids / family', tag: 'want_kids', icon: '👨‍👩‍👧' },
-      { label: 'Adults (no kids stuff)', tag: 'want_adult', icon: '🔞' },
+      { label: 'Adult', tag: 'want_adult', icon: '🔞' },
       { label: "Don't care — show everything", tag: 'audience_any', icon: '🎲' },
     ],
   },
@@ -607,9 +602,10 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
   const [nextPage, setNextPage] = useState(1);
   const [maxPages, setMaxPages] = useState(1);
   const [foundMovie, setFoundMovie] = useState<Movie | null>(null);
-  const [filtersOpen, setFiltersOpen] = useState(true);
+  const [chromeVisible, setChromeVisible] = useState(true);
   const listRef = useRef<HTMLDivElement>(null);
   const activeQueryRef = useRef<PoolQuery>({});
+  const lastScrollTopRef = useRef(0);
 
   const currentQ = QUESTION_BANK[Math.min(currentStep, QUESTION_BANK.length - 1)];
   const answeredCount = Object.keys(answers).length;
@@ -701,6 +697,8 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
       const winner = (tight ? hardLeft : scored)[0];
       setFoundMovie(winner);
       setVisibleCount(Math.max(PAGE_SIZE * 2, 48));
+      setChromeVisible(true);
+      lastScrollTopRef.current = 0;
       if (typeof window !== 'undefined') {
         window.scrollTo({ top: 0, behavior: 'auto' });
       }
@@ -717,7 +715,7 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
 
   const jumpToStep = (step: number) => {
     setCurrentStep(Math.max(0, Math.min(QUESTION_BANK.length - 1, step)));
-    setFiltersOpen(true);
+    setChromeVisible(true);
   };
 
   const handleSelectOption = async (option: { label: string; tag: string }) => {
@@ -735,7 +733,7 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
     const nxt = nextUnansweredStep(nextAnswers, currentStep);
     if (nxt != null) {
       setCurrentStep(nxt);
-      setFiltersOpen(true);
+      setChromeVisible(true);
     } else {
       celebrateIfReady(scored, nextAnswers);
     }
@@ -746,7 +744,8 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
     setCurrentStep(0);
     setFoundMovie(null);
     setVisibleCount(PAGE_SIZE);
-    setFiltersOpen(true);
+    setChromeVisible(true);
+    lastScrollTopRef.current = 0;
     loadPoolForTags([]);
   };
 
@@ -768,7 +767,18 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
   const onListScroll = () => {
     const el = listRef.current;
     if (!el) return;
-    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 160) {
+    const y = el.scrollTop;
+    const delta = y - lastScrollTopRef.current;
+    if (y < 48) {
+      setChromeVisible(true);
+    } else if (delta > 10) {
+      setChromeVisible(false);
+    } else if (delta < -10) {
+      setChromeVisible(true);
+    }
+    lastScrollTopRef.current = y;
+
+    if (y + el.clientHeight >= el.scrollHeight - 160) {
       if (visibleCount < ranked.length) {
         setVisibleCount((c) => Math.min(c + PAGE_SIZE, ranked.length));
       } else {
@@ -785,63 +795,81 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
     const closeMatches = visible.filter((m) => String(m.id) !== String(foundMovie.id));
     return (
       <div className="w-full h-[calc(100dvh-5rem)] max-h-[calc(100dvh-5rem)] overflow-hidden flex flex-col gap-2 p-2 sm:p-3 animate-fade-in">
-        <div className="shrink-0 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 bg-neutral-900/90 border border-neutral-800 rounded-xl px-3 py-3">
-          <button
-            type="button"
-            onClick={() => (onSelectMovie ? onSelectMovie(foundMovie) : onPlayTrailer(foundMovie))}
-            className="flex items-center gap-3 group text-left min-w-0"
-          >
-            <div className="relative w-16 sm:w-20 aspect-[2/3] rounded-lg overflow-hidden border-2 border-amber-400 shrink-0 shadow-lg shadow-amber-500/20">
-              {foundMovie.poster_path ? (
-                <Image
-                  src={foundMovie.poster_path}
-                  alt={foundMovie.title}
-                  fill
-                  sizes="80px"
-                  className="object-cover group-hover:scale-105 transition"
-                  unoptimized={foundMovie.poster_path.startsWith('http')}
-                />
-              ) : null}
-            </div>
-            <div className="min-w-0">
-              <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[10px] font-bold mb-1">
-                <Sparkles className="w-3 h-3" /> We found your movie
+        <div
+          className={`shrink-0 overflow-hidden transition-all duration-300 ease-out ${
+            chromeVisible ? 'max-h-40 opacity-100' : 'max-h-0 opacity-0 -mt-2'
+          }`}
+        >
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 bg-neutral-900/90 border border-neutral-800 rounded-xl px-3 py-3">
+            <button
+              type="button"
+              onClick={() => (onSelectMovie ? onSelectMovie(foundMovie) : onPlayTrailer(foundMovie))}
+              className="flex items-center gap-3 group text-left min-w-0"
+            >
+              <div className="relative w-16 sm:w-20 aspect-[2/3] rounded-lg overflow-hidden border-2 border-amber-400 shrink-0 shadow-lg shadow-amber-500/20">
+                {foundMovie.poster_path ? (
+                  <Image
+                    src={foundMovie.poster_path}
+                    alt={foundMovie.title}
+                    fill
+                    sizes="80px"
+                    className="object-cover group-hover:scale-105 transition"
+                    unoptimized={foundMovie.poster_path.startsWith('http')}
+                  />
+                ) : null}
               </div>
-              <h2 className="text-lg sm:text-xl font-black text-white truncate">{foundMovie.title}</h2>
-              <p className="text-xs text-neutral-400">
-                ★ {foundMovie.vote_average?.toFixed(1) ?? '—'} · {foundMovie.release_date?.slice(0, 4)}
-              </p>
+              <div className="min-w-0">
+                <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[10px] font-bold mb-1">
+                  <Sparkles className="w-3 h-3" /> We found your movie
+                </div>
+                <h2 className="text-lg sm:text-xl font-black text-white truncate">{foundMovie.title}</h2>
+                <p className="text-xs text-neutral-400">
+                  ★ {foundMovie.vote_average?.toFixed(1) ?? '—'} · {foundMovie.release_date?.slice(0, 4)}
+                </p>
+              </div>
+            </button>
+            <div className="flex gap-2 sm:ml-auto shrink-0">
+              <button
+                type="button"
+                onClick={() => onPlayTrailer(foundMovie)}
+                className="px-3.5 py-2 rounded-xl bg-amber-500 text-neutral-950 font-bold text-sm flex items-center gap-1.5"
+              >
+                <Play className="w-4 h-4 fill-current" /> Trailer
+              </button>
+              <button
+                type="button"
+                onClick={handleReset}
+                className="px-3.5 py-2 rounded-xl bg-neutral-800 text-neutral-200 font-semibold text-sm flex items-center gap-1.5"
+              >
+                <RotateCcw className="w-3.5 h-3.5" /> Again
+              </button>
             </div>
-          </button>
-          <div className="flex gap-2 sm:ml-auto shrink-0">
-            <button
-              type="button"
-              onClick={() => onPlayTrailer(foundMovie)}
-              className="px-3.5 py-2 rounded-xl bg-amber-500 text-neutral-950 font-bold text-sm flex items-center gap-1.5"
-            >
-              <Play className="w-4 h-4 fill-current" /> Trailer
-            </button>
-            <button
-              type="button"
-              onClick={handleReset}
-              className="px-3.5 py-2 rounded-xl bg-neutral-800 text-neutral-200 font-semibold text-sm flex items-center gap-1.5"
-            >
-              <RotateCcw className="w-3.5 h-3.5" /> Again
-            </button>
           </div>
         </div>
 
         <div className="flex-1 min-h-0 rounded-xl border border-neutral-800 bg-neutral-950/90 flex flex-col overflow-hidden">
           <div className="flex items-center justify-between px-2.5 py-1.5 border-b border-neutral-800/80 shrink-0">
-            <p className="text-[10px] uppercase font-bold text-neutral-400 tracking-wider">
-              Also close · {displayTotal.toLocaleString()}
-              {displayTotal > ranked.length ? '+' : ''} in filter
+            <p className="text-[10px] uppercase font-bold text-neutral-400 tracking-wider truncate">
+              {chromeVisible
+                ? `Also close · ${displayTotal.toLocaleString()}${displayTotal > ranked.length ? '+' : ''}`
+                : foundMovie.title}
             </p>
-            {visibleCount < ranked.length || nextPage <= maxPages ? (
-              <span className="text-[9px] text-neutral-500">
-                {isLoadingMore ? 'Loading more…' : 'Scroll for more'}
-              </span>
-            ) : null}
+            <div className="flex items-center gap-2 shrink-0">
+              {!chromeVisible ? (
+                <button
+                  type="button"
+                  onClick={() => setChromeVisible(true)}
+                  className="text-[10px] font-bold text-amber-400 px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/30"
+                >
+                  Show pick
+                </button>
+              ) : null}
+              {visibleCount < ranked.length || nextPage <= maxPages ? (
+                <span className="text-[9px] text-neutral-500">
+                  {isLoadingMore ? 'Loading more…' : 'Scroll for more'}
+                </span>
+              ) : null}
+            </div>
           </div>
           <div
             ref={listRef}
@@ -899,7 +927,7 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
 
   return (
     <div className="w-full h-[calc(100dvh-5rem)] max-h-[calc(100dvh-5rem)] overflow-hidden flex flex-col p-2 sm:p-3 gap-2">
-      {/* Category jump bar — wizard in order, or click any to jump */}
+      {/* Category pills — always visible */}
       <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 min-w-0">
         <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider shrink-0 hidden sm:inline">
           Matchmaker
@@ -949,122 +977,40 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
         </button>
       </div>
 
-      {/* Filters — collapsible so results can fill the screen */}
-      <div className="shrink-0 flex flex-col bg-neutral-900/90 border border-neutral-800 rounded-xl overflow-hidden">
-        <button
-          type="button"
-          onClick={() => setFiltersOpen((o) => !o)}
-          className="w-full flex items-center gap-2 px-2.5 py-2 sm:px-3 text-left hover:bg-neutral-800/40 transition"
-          aria-expanded={filtersOpen}
-        >
-          <SlidersHorizontal className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-          <span className="text-xs sm:text-sm font-bold text-white truncate flex-1">
-            {filtersOpen
-              ? `${currentQ.category} · ${currentQ.question}`
-              : answeredCount > 0
-                ? `${answeredCount} filter${answeredCount === 1 ? '' : 's'} on · tap to ask more`
-                : 'Filters · tap to start'}
-          </span>
-          {!filtersOpen ? (
-            <span className="hidden sm:inline text-[10px] text-amber-400/90 font-semibold shrink-0 truncate max-w-[10rem]">
-              {answers[currentStep]
-                ? `Edit: ${currentQ.category}`
-                : `Next: ${currentQ.category}`}
-            </span>
-          ) : null}
-          {filtersOpen ? (
-            <ChevronUp className="w-4 h-4 text-neutral-400 shrink-0" />
-          ) : (
-            <ChevronDown className="w-4 h-4 text-neutral-400 shrink-0" />
-          )}
-        </button>
-
-        {answeredCount > 0 ? (
-          <div className="flex flex-wrap gap-1 px-2.5 pb-2 sm:px-3">
-            {Object.entries(answers)
-              .sort(([a], [b]) => Number(a) - Number(b))
-              .map(([step, a]) => (
+      {/* Options — hide on scroll down, return on scroll up */}
+      <div
+        className={`shrink-0 overflow-hidden transition-all duration-300 ease-out ${
+          chromeVisible ? 'max-h-[28rem] opacity-100' : 'max-h-0 opacity-0 -mt-2'
+        }`}
+      >
+        <div className="bg-neutral-900/90 border border-neutral-800 rounded-xl px-2.5 py-2 sm:px-3 sm:py-2.5">
+          <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
+            {currentQ.options.map((opt) => {
+              const isSelected = answers[currentStep]?.tag === opt.tag;
+              const isDontCare =
+                opt.tag === 'any' || opt.tag.endsWith('_any') || opt.tag.endsWith('_skip');
+              const spanFull = isDontCare && currentQ.options.length % 2 === 1;
+              return (
                 <button
-                  key={step}
+                  key={opt.tag}
                   type="button"
-                  onClick={() => jumpToStep(Number(step))}
-                  className="text-[10px] sm:text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-200 border border-amber-500/30 hover:bg-amber-500/25 transition"
-                  title={`Edit ${QUESTION_BANK[Number(step)]?.category ?? ''}`}
+                  onClick={() => handleSelectOption(opt)}
+                  className={`${spanFull ? 'col-span-2' : ''} text-left py-2.5 sm:py-3 px-2.5 rounded-xl border text-xs sm:text-sm font-semibold transition active:scale-[0.98] flex items-center gap-2 ${
+                    isSelected
+                      ? 'bg-amber-500/20 border-amber-500 text-white'
+                      : isDontCare
+                        ? 'border-dashed border-neutral-600 text-neutral-300 bg-neutral-950/40'
+                        : 'bg-neutral-950/70 border-neutral-800 text-neutral-200'
+                  }`}
                 >
-                  <span className="text-amber-400/80 mr-1">{QUESTION_BANK[Number(step)]?.category}</span>
-                  {a.label}
+                  <span className="text-base shrink-0 leading-none">{opt.icon}</span>
+                  <span className="truncate leading-tight">{opt.label}</span>
+                  {isSelected ? <Check className="w-3.5 h-3.5 text-amber-400 ml-auto shrink-0" /> : null}
                 </button>
-              ))}
+              );
+            })}
           </div>
-        ) : null}
-
-        {filtersOpen ? (
-          <div className="px-2.5 pb-2.5 sm:px-3 sm:pb-3 border-t border-neutral-800/80 pt-2">
-            <div className="flex items-center justify-between gap-2 mb-2">
-              <h2 className="text-[15px] sm:text-base font-extrabold text-white leading-tight">
-                {currentQ.question}
-              </h2>
-              <div className="flex items-center gap-0.5 shrink-0">
-                <button
-                  onClick={() => jumpToStep(currentStep - 1)}
-                  disabled={currentStep === 0}
-                  className="p-1 rounded-md text-neutral-400 disabled:opacity-30"
-                  aria-label="Back"
-                  type="button"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => {
-                    const nxt = nextUnansweredStep(answers, currentStep);
-                    if (nxt != null) jumpToStep(nxt);
-                    else jumpToStep(Math.min(QUESTION_BANK.length - 1, currentStep + 1));
-                  }}
-                  className="p-1 rounded-md text-neutral-400"
-                  aria-label="Next unanswered"
-                  type="button"
-                  title="Next unanswered"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFiltersOpen(false)}
-                  className="ml-1 text-[10px] font-bold uppercase tracking-wide text-neutral-400 hover:text-white px-1.5 py-1 rounded-md border border-neutral-700"
-                >
-                  Browse
-                </button>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
-              {currentQ.options.map((opt) => {
-                const isSelected = answers[currentStep]?.tag === opt.tag;
-                const isDontCare =
-                  opt.tag === 'any' || opt.tag.endsWith('_any') || opt.tag.endsWith('_skip');
-                const spanFull = isDontCare && currentQ.options.length % 2 === 1;
-                return (
-                  <button
-                    key={opt.tag}
-                    type="button"
-                    onClick={() => handleSelectOption(opt)}
-                    className={`${spanFull ? 'col-span-2' : ''} text-left py-2.5 sm:py-3 px-2.5 rounded-xl border text-xs sm:text-sm font-semibold transition active:scale-[0.98] flex items-center gap-2 ${
-                      isSelected
-                        ? 'bg-amber-500/20 border-amber-500 text-white'
-                        : isDontCare
-                          ? 'border-dashed border-neutral-600 text-neutral-300 bg-neutral-950/40'
-                          : 'bg-neutral-950/70 border-neutral-800 text-neutral-200'
-                    }`}
-                  >
-                    <span className="text-base shrink-0 leading-none">{opt.icon}</span>
-                    <span className="truncate leading-tight">{opt.label}</span>
-                    {isSelected ? <Check className="w-3.5 h-3.5 text-amber-400 ml-auto shrink-0" /> : null}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        ) : null}
+        </div>
       </div>
 
       {/* Full ranked list — fills leftover screen */}
@@ -1084,22 +1030,11 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
               {answeredCount > 0 && !isLoadingPool ? ' · live' : ''}
             </span>
           </span>
-          <div className="flex items-center gap-2 shrink-0">
-            {!filtersOpen ? (
-              <button
-                type="button"
-                onClick={() => setFiltersOpen(true)}
-                className="text-[10px] font-bold text-amber-400 px-2 py-1 rounded-lg bg-amber-500/10 border border-amber-500/30 hover:bg-amber-500/20 transition"
-              >
-                + Filter
-              </button>
-            ) : null}
-            {visibleCount < ranked.length || nextPage <= maxPages ? (
-              <span className="text-[9px] text-neutral-500 hidden sm:inline">
-                {isLoadingMore ? 'Loading more…' : 'Scroll for more'}
-              </span>
-            ) : null}
-          </div>
+          {visibleCount < ranked.length || nextPage <= maxPages ? (
+            <span className="text-[9px] text-neutral-500 hidden sm:inline">
+              {isLoadingMore ? 'Loading more…' : 'Scroll for more'}
+            </span>
+          ) : null}
         </div>
 
         <div

@@ -65,15 +65,6 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
             {appMode === 'chat' && 'Cinephile AI Chat'}
           </span>
         )}
-        {/* Dedicated 20Q Movie Finder Quick Launcher Button */}
-        <button
-          onClick={onOpenFinder}
-          title="20Q Movie Finder"
-          className="text-xs font-bold text-amber-300 hover:text-white flex items-center gap-1.5 bg-gradient-to-r from-amber-500/20 to-neutral-900 px-2.5 py-1.5 rounded-xl border border-amber-500/40 shrink-0 shadow active:scale-95 transition"
-        >
-          <Film className="w-3.5 h-3.5 text-amber-400" />
-          <span className="text-[11px] font-extrabold whitespace-nowrap">20Q Finder</span>
-        </button>
       </div>
 
       {/* Main Content View */}
