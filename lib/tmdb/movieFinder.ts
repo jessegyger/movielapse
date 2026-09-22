@@ -534,11 +534,14 @@ export function selectNextQuestion(
   let bestScore = -1;
 
   for (const q of available) {
-    let sumMatch = 0;
-    for (const m of topContenders) {
-      sumMatch += q.match(m);
+    const matchingCount = topContenders.filter((m) => q.match(m) >= 0.3).length;
+    // CRITICAL FIX: Only ask questions where a meaningful percentage of remaining movies match.
+    // If nobody matches (e.g. 0 movies have gangsters), NEVER ask about it!
+    if (matchingCount < 1 || matchingCount >= topContenders.length) {
+      continue;
     }
-    const avg = sumMatch / topContenders.length;
+
+    const avg = matchingCount / topContenders.length;
     const score = 1.0 - Math.abs(avg - 0.5) * 2;
     if (score > bestScore) {
       bestScore = score;
@@ -546,7 +549,7 @@ export function selectNextQuestion(
     }
   }
 
-  return best || available[0];
+  return best;
 }
 
 // ── Actor Picture Identification & Dynamic On-The-Fly Questions ─────────────
