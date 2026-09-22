@@ -50,9 +50,6 @@ const MAX_STANDARD_QUESTIONS = 20;
 const COMPACT_STUDIO_PILLS = [
   { label: 'Disney', companyId: '2|3' },
   { label: 'Marvel', companyId: '420' },
-  { label: 'DreamWorks', companyId: '521' },
-  { label: 'Ghibli', companyId: '10342' },
-  { label: 'Warner', companyId: '174' },
 ];
 
 /** Proper decade buckets — no overlapping / gap between 2000–2009 */
@@ -545,12 +542,43 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
     setIsQueryingTMDb(false);
   };
 
-  // Trigger On-The-Fly Question Generator
+  // Keep asking — fall through bank → dynamic → actors so the button never no-ops
   const handleKeepNarrowingOnTheFly = () => {
     const topRemaining = qualifyingScored.map((s) => s.movie);
-    const dynamicQ = generateDynamicQuestion(topRemaining, askedIds, candidateActors);
-    if (dynamicQ) {
-      setCurrentQuestion(dynamicQ);
+    const pool =
+      topRemaining.length >= 2
+        ? topRemaining
+        : scoredPool.slice(0, 20).map((s) => s.movie);
+
+    let nextQ = selectSmartNextQuestion(
+      qualifyingScored.length ? qualifyingScored : scoredPool,
+      askedIds,
+      hasAnsweredEra,
+      questionCount,
+      history
+    );
+
+    if (!nextQ) {
+      nextQ = generateDynamicQuestion(pool, askedIds, candidateActors);
+    }
+
+    // Last resort: force an actor question even if themes are exhausted
+    if (!nextQ && candidateActors.length > 0) {
+      const actor = candidateActors.find((a) => !askedIds.has(`dyn_actor_${a.id}`));
+      if (actor) {
+        nextQ = {
+          id: `dyn_actor_${actor.id}`,
+          question: `Does it star ${actor.name}?`,
+          hint: actor.character ? `Character: ${actor.character}` : undefined,
+          actorPhoto: actor.profile_path,
+          actorName: actor.name,
+          match: (m) => (actor.movieIds.has(Number(m.id)) ? 1.0 : 0.0),
+        };
+      }
+    }
+
+    if (nextQ) {
+      setCurrentQuestion(nextQ);
     }
   };
 
@@ -759,19 +787,19 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
                 <button
                   disabled={isQueryingTMDb}
                   onClick={() => handleAnswer('sometimes')}
-                  className="flex items-center justify-center gap-1 py-2.5 px-1 rounded-xl bg-amber-950/70 border border-amber-500/60 text-amber-300 font-bold text-[11px] sm:text-sm shadow disabled:opacity-50 active:scale-95"
+                  className="flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1 py-2 px-1 rounded-xl bg-amber-950/70 border border-amber-500/60 text-amber-300 font-bold text-[10px] sm:text-sm shadow disabled:opacity-50 active:scale-95 leading-tight"
                 >
                   <HelpCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                  <span className="truncate">Maybe</span>
+                  <span>Sometimes</span>
                 </button>
 
                 <button
                   disabled={isQueryingTMDb}
                   onClick={() => handleAnswer('skip')}
-                  className="flex items-center justify-center gap-1 py-2.5 px-1 rounded-xl bg-neutral-800/90 border border-neutral-700 text-neutral-300 font-semibold text-[11px] sm:text-sm shadow disabled:opacity-50 active:scale-95"
+                  className="flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1 py-2 px-1 rounded-xl bg-neutral-800/90 border border-neutral-700 text-neutral-300 font-semibold text-[10px] sm:text-sm shadow disabled:opacity-50 active:scale-95 leading-tight"
                 >
                   <Minus className="w-3.5 h-3.5 text-neutral-400 shrink-0" />
-                  <span className="truncate">Skip</span>
+                  <span>Don&apos;t know</span>
                 </button>
 
                 <button

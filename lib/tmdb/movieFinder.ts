@@ -397,8 +397,15 @@ export const QUESTION_BANK: WizardQuestion[] = [
   {
     id: 'outer_space',
     question: 'Does the story take place in outer space?',
-    hint: 'Spaceships, other planets, astronauts, galaxies',
-    match: (m) => textMatch(m, 'space', 'spaceship', 'planet', 'galaxy', 'astronaut', 'orbit'),
+    hint: 'Mostly set on spaceships / other planets — pick Sometimes if only partly',
+    match: (m) => {
+      const hard = textMatch(m, 'spaceship', 'outer space', 'galaxy', 'astronaut', 'orbit', 'nasa');
+      if (hard >= 0.7) return hard;
+      const soft = textMatch(m, 'space', 'planet', 'rocket', 'moon');
+      if (soft >= 0.7) return 0.55; // partial — Sometimes territory
+      if (/\brocket\b/i.test(m.title || '')) return 0.4;
+      return soft;
+    },
     onYes: { with_keywords: '9882|3801' },
   },
   {
@@ -619,8 +626,20 @@ export async function searchLiveTMDb(query: string): Promise<Movie[]> {
 // ── Probabilistic Scoring Across Candidate Pool ──────────────────────────────
 
 /**
- * Hard Akinator constraints: after Yes/No, drop movies that clearly contradict.
- * "Sometimes" / "Not sure" stay soft and do not eliminate.
+ * Hard-drop only for clear structural facts (era / genre / studio / animated).
+ * Keyword & setting questions (space, heist, etc.) are SOFT — "Rocket Man" style
+ * partial matches must survive a Yes without vanishing.
+ */
+function isHardDropQuestion(q: WizardQuestion): boolean {
+  if (q.isEra) return true;
+  if (q.onYes?.with_genres || q.onNo?.without_genres) return true;
+  if (q.onYes?.with_companies) return true;
+  return ['animated', 'female_lead', 'disney_pixar', 'cluster_genre_animation'].includes(q.id);
+}
+
+/**
+ * Hard Akinator constraints for era/genre only.
+ * "Sometimes" / "Don't know" never eliminate. Keyword settings never hard-drop.
  */
 export function filterPoolByHistory(
   movies: Movie[],
@@ -629,6 +648,7 @@ export function filterPoolByHistory(
   if (history.length === 0) return movies;
   return movies.filter((m) => {
     for (const { q, answer } of history) {
+      if (!isHardDropQuestion(q)) continue;
       const match = q.match(m);
       if (answer === 'yes' && match < 0.28) return false;
       if (answer === 'no' && match >= 0.65) return false;
@@ -638,11 +658,11 @@ export function filterPoolByHistory(
 }
 
 export function hasHardDiscoverFilters(filters: LiveDiscoverFilters): boolean {
+  // Keywords are soft (merge + score). Studio / genre / era replace the pool.
   return Boolean(
     filters.with_companies ||
       filters.with_genres.size > 0 ||
       filters.without_genres.size > 0 ||
-      filters.with_keywords.size > 0 ||
       filters.primary_release_date_gte ||
       filters.primary_release_date_lte ||
       (filters.vote_average_gte && filters.vote_average_gte > 0)
@@ -658,26 +678,28 @@ export function scoreAllMovies(
     let score = Math.min((m.vote_count || 0) / 4000, 2.5);
 
     if (clueMatches.has(String(m.id))) {
-      score += 20.0; // massive priority boost if user clue matches
+      score += 20.0;
     }
 
     for (const { q, answer } of history) {
       const match = q.match(m);
+      const hard = isHardDropQuestion(q);
       switch (answer) {
         case 'yes':
           if (match >= 0.7) score += 6.0;
           else if (match >= 0.3) score += 2.0;
-          else score -= 12.0; // hard contradiction
+          else score -= hard ? 12.0 : 3.5; // soft questions: gentle penalty, don't bury partials
           break;
         case 'sometimes':
-          if (match >= 0.2 && match <= 0.8) score += 2.5;
-          else if (match > 0.8) score += 1.2;
-          else score -= 0.5;
+          // Partial / mixed — boost mid matches (Rocket Man + "space?")
+          if (match >= 0.15 && match <= 0.85) score += 4.0;
+          else if (match > 0.85) score += 1.0;
+          else score -= 0.25;
           break;
         case 'no':
           if (match <= 0.2) score += 3.0;
           else if (match <= 0.5) score += 0.5;
-          else score -= 12.0; // hard contradiction
+          else score -= hard ? 12.0 : 3.5;
           break;
         case 'skip':
           break;
