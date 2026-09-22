@@ -4,15 +4,12 @@ import React, { useState, useEffect } from 'react';
 import confetti from 'canvas-confetti';
 import {
   Sparkles,
-  ArrowRight,
   RotateCcw,
   Check,
   Play,
   Heart,
   Bookmark,
   Tv,
-  Film,
-  Zap,
   ChevronRight,
   ChevronLeft
 } from 'lucide-react';
