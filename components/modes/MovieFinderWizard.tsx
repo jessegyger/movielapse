@@ -143,14 +143,50 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
     return () => document.removeEventListener('keydown', handler);
   }, [isOpen, onClose]);
 
-  // ── ACTIVE NARROWING: Only display movies that positively match answers! ──
+  // ── ACTIVE NARROWING: Dynamically narrows candidate pool down to top matches! ──
   const qualifyingScored = useMemo(() => {
     if (questionCount === 0 && !activeStudioPill && !activeEraPill && clueMatches.size === 0) {
       return scoredPool;
     }
-    const threshold = 0.5;
+    if (scoredPool.length === 0) return [];
+
+    const topScore = scoredPool[0]?.score ?? 0;
+    
+    // Adaptive narrowing: as questions progress, candidates must stay within a percentage of the leader
+    // Q1-3: within 70% or >= 1.0
+    // Q4-10: within 55% of leader or >= 3.0
+    // Q11-20: within 45% of leader or >= 6.0
+    // Q20+: within 35% of leader or >= 8.0
+    let leaderRatio = 0.70;
+    let minBase = 1.0;
+    if (questionCount >= 20) {
+      leaderRatio = 0.35;
+      minBase = 8.0;
+    } else if (questionCount >= 10) {
+      leaderRatio = 0.45;
+      minBase = 5.5;
+    } else if (questionCount >= 4) {
+      leaderRatio = 0.55;
+      minBase = 3.0;
+    }
+
+    const threshold = Math.max(minBase, topScore * leaderRatio);
     const filtered = scoredPool.filter((s) => s.score >= threshold);
-    return filtered.length > 0 ? filtered : scoredPool.slice(0, 8);
+
+    // Limit maximum candidates shown as questions advance so user is never stuck looking at 200 items:
+    // Q1-5: up to 100
+    // Q6-12: up to 50
+    // Q13-19: up to 25
+    // Q20+: up to 12
+    let maxToShow = 100;
+    if (questionCount >= 20) maxToShow = 15;
+    else if (questionCount >= 12) maxToShow = 30;
+    else if (questionCount >= 6) maxToShow = 50;
+
+    if (filtered.length > 0) {
+      return filtered.slice(0, maxToShow);
+    }
+    return scoredPool.slice(0, Math.min(8, maxToShow));
   }, [scoredPool, questionCount, activeStudioPill, activeEraPill, clueMatches]);
 
   // Filter within current results for quick title testing
@@ -204,10 +240,13 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
       // 1. Try standard next question (only asks questions where candidates actually match)
       let nextQ = selectNextQuestion(scored, updatedAskedIds, eraAnswered);
 
-      // 2. If standard questions exhausted, generate on-the-fly dynamic question
+      // 2. If standard questions exhausted, generate on-the-fly dynamic question from top narrowed contenders
       if (!nextQ) {
-        const topRemaining = scored.filter((s) => s.score >= 0.5).map((s) => s.movie);
-        nextQ = generateDynamicQuestion(topRemaining, updatedAskedIds, candidateActors);
+        const topScore = scored[0]?.score ?? 0;
+        const dynamicThreshold = Math.max(3.0, topScore * 0.4);
+        const topRemaining = scored.filter((s) => s.score >= dynamicThreshold).map((s) => s.movie);
+        const pool = topRemaining.length >= 2 ? topRemaining : scored.slice(0, 15).map((s) => s.movie);
+        nextQ = generateDynamicQuestion(pool, updatedAskedIds, candidateActors);
       }
 
       setCurrentQuestion(nextQ || null);

@@ -490,19 +490,19 @@ export function scoreAllMovies(
       const match = q.match(m);
       switch (answer) {
         case 'yes':
-          if (match >= 0.7) score += 3.2;
+          if (match >= 0.7) score += 4.5;
           else if (match >= 0.3) score += 1.5;
-          else score -= 1.4;
+          else score -= 4.0; // strong penalty for mismatching a 'yes' answer
           break;
         case 'sometimes':
           if (match >= 0.2 && match <= 0.8) score += 2.5;
           else if (match > 0.8) score += 1.2;
-          else score -= 0.3;
+          else score -= 0.5;
           break;
         case 'no':
-          if (match <= 0.2) score += 2.2;
+          if (match <= 0.2) score += 2.5;
           else if (match <= 0.5) score += 0.5;
-          else score -= 2.4;
+          else score -= 5.0; // strong penalty for mismatching a 'no' answer
           break;
         case 'skip':
           break;

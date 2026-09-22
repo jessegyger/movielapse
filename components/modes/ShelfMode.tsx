@@ -427,6 +427,25 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
         </button>
       </form>
 
+      {/* Mobile-Only 20Q Finder Launcher (prominently visible right on Vault shelf) */}
+      <div className="sm:hidden mb-3">
+        <button
+          type="button"
+          onClick={onOpenFinder}
+          className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-amber-500/20 via-amber-600/10 to-neutral-900 border border-amber-500/40 text-amber-300 font-extrabold text-xs flex items-center justify-between shadow-lg shadow-amber-500/5 active:scale-95 transition"
+        >
+          <div className="flex items-center gap-2">
+            <span className="p-1 rounded-lg bg-amber-500/20 text-amber-400">
+              <Clapperboard className="w-3.5 h-3.5" />
+            </span>
+            <span>Can&apos;t remember a movie?</span>
+          </div>
+          <span className="px-2 py-0.5 rounded-md bg-amber-500 text-neutral-950 font-black text-[10px] uppercase tracking-wider">
+            Launch 20Q
+          </span>
+        </button>
+      </div>
+
       {/* Top Shelf Navigation Tabs */}
       <div className="flex items-center gap-3 sm:gap-4 mb-4">
         {/* Navigation Tabs */}

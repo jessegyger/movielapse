@@ -237,6 +237,7 @@ export default function Home() {
           onSearchChange={setSearchQuery}
           onClearSearch={() => setSearchQuery('')}
           onOpenSearch={() => setIsMobileSearchOpen(true)}
+          onOpenFinder={() => setIsFinderOpen(true)}
         >
           {renderModeContent()}
         </MobileLayout>
