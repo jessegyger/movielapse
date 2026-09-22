@@ -5,6 +5,7 @@ import confetti from 'canvas-confetti';
 import {
   Sparkles,
   RotateCcw,
+  Check,
   Play,
   ChevronRight,
   ChevronLeft,
