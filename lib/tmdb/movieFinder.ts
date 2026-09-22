@@ -23,6 +23,8 @@ export interface WizardQuestion {
   question: string;
   hint?: string;
   isEra?: boolean;
+  actorPhoto?: string;
+  actorName?: string;
   match: (m: Movie) => number;
   onYes?: DiscoverParamUpdate;
   onNo?: DiscoverParamUpdate;
@@ -620,8 +622,113 @@ export async function fetchTopActorsForCandidates(
 }
 
 /**
+ * Common storyline themes to check dynamically from movie overviews and genres
+ */
+const DYNAMIC_THEME_CANDIDATES: { id: string; question: string; hint?: string; test: (m: Movie) => boolean }[] = [
+  {
+    id: 'theme_animated',
+    question: 'Is the movie completely animated?',
+    hint: '3D animated, CGI, hand-drawn, or cartoon',
+    test: (m) => m.genres?.some((g) => g.toLowerCase().includes('animation')) || false,
+  },
+  {
+    id: 'theme_disney',
+    question: 'Is it produced by Disney or Pixar?',
+    hint: 'Walt Disney Pictures, Disney Animation, or Pixar',
+    test: (m) => {
+      const t = `${m.title} ${m.overview || ''}`.toLowerCase();
+      return t.includes('disney') || t.includes('pixar');
+    },
+  },
+  {
+    id: 'theme_royal_kingdom',
+    question: 'Does it involve princesses, princes, royalty, or a fantasy kingdom?',
+    hint: 'Castles, monarchy, crowns, royal lineage',
+    test: (m) => /\b(princess|prince|queen|king|kingdom|castle|royal|throne)\b/i.test(`${m.title} ${m.overview || ''}`),
+  },
+  {
+    id: 'theme_animals',
+    question: 'Are talking animals or animal characters central to the story?',
+    hint: 'Animals that talk or embark on a journey',
+    test: (m) => /\b(animal|dog|puppy|cat|lion|bear|fish|deer|rabbit|mouse|fox|wolf|elephant|jungle)\b/i.test(`${m.title} ${m.overview || ''}`),
+  },
+  {
+    id: 'theme_magic_spells',
+    question: 'Does it feature magic, curses, spells, or mythical powers?',
+    hint: 'Sorcery, enchanted objects, magical transformations',
+    test: (m) => /\b(magic|magical|curse|cursed|spell|witch|wizard|fairy|genie|enchanted)\b/i.test(`${m.title} ${m.overview || ''}`),
+  },
+  {
+    id: 'theme_singing_songs',
+    question: 'Do characters frequently break into song or is music a main theme?',
+    hint: 'Musical numbers, memorable singing sequences',
+    test: (m) => m.genres?.some((g) => g.toLowerCase().includes('music')) || /\b(musical|sing|singing|song|soundtrack)\b/i.test(`${m.title} ${m.overview || ''}`),
+  },
+  {
+    id: 'theme_family_children',
+    question: 'Is it centered around family, siblings, or parents and children?',
+    hint: 'Parenthood, brother/sister relationship, or family bonds',
+    test: (m) => /\b(family|father|mother|sister|brother|daughter|son|parents)\b/i.test(`${m.title} ${m.overview || ''}`),
+  },
+  {
+    id: 'theme_ocean_water',
+    question: 'Is it set on the ocean, underwater, or in a tropical island setting?',
+    hint: 'Sea, sailing, islands, marine life',
+    test: (m) => /\b(ocean|sea|island|water|underwater|ship|sailing|boat|tropic)\b/i.test(`${m.title} ${m.overview || ''}`),
+  },
+  {
+    id: 'theme_forest_jungle',
+    question: 'Is much of the journey set in a deep forest, woods, or wilderness?',
+    hint: 'Woodland adventures, trees, enchanted woods',
+    test: (m) => /\b(forest|woods|jungle|wilderness|woodland)\b/i.test(`${m.title} ${m.overview || ''}`),
+  },
+  {
+    id: 'theme_quest_journey',
+    question: 'Does the plot involve leaving home on an epic quest or rescue mission?',
+    hint: 'Journey to save someone, find a lost treasure, or journey across the world',
+    test: (m) => /\b(quest|journey|rescue|save|voyage|mission|trek|expedition|homeward)\b/i.test(`${m.title} ${m.overview || ''}`),
+  },
+  {
+    id: 'theme_school_young',
+    question: 'Is the protagonist a kid, student, or teenager in school or growing up?',
+    hint: 'Coming-of-age, youthful protagonist',
+    test: (m) => /\b(kid|boy|girl|child|school|student|teen|teenager|young)\b/i.test(`${m.title} ${m.overview || ''}`),
+  },
+  {
+    id: 'theme_villain_powers',
+    question: 'Is there a prominent evil villain trying to conquer, steal, or rule?',
+    hint: 'Evil queen, villainous conqueror, wicked scheme',
+    test: (m) => /\b(villain|evil|wicked|conquer|ruler|tyrant|destroy|scheme)\b/i.test(`${m.title} ${m.overview || ''}`),
+  },
+  {
+    id: 'theme_space_futuristic',
+    question: 'Is it set in outer space or a futuristic world?',
+    hint: 'Spaceships, high-tech planets, future era',
+    test: (m) => /\b(space|spaceship|planet|alien|future|futuristic|galaxy)\b/i.test(`${m.title} ${m.overview || ''}`),
+  },
+  {
+    id: 'theme_romance_love',
+    question: 'Does the story have a major love story or romantic couple at its core?',
+    hint: 'Falling in love, romantic pursuit',
+    test: (m) => m.genres?.some((g) => g.toLowerCase().includes('romance')) || /\b(love|romance|romantic|marry|wedding|couple)\b/i.test(`${m.title} ${m.overview || ''}`),
+  },
+  {
+    id: 'theme_humor_comedy',
+    question: 'Is humor and lighthearted comedy a big part of the movie?',
+    hint: 'Lots of jokes, physical comedy, or hilarious sidekicks',
+    test: (m) => m.genres?.some((g) => g.toLowerCase().includes('comedy')) || /\b(funny|comedy|humor|sidekick|hilarious)\b/i.test(`${m.title} ${m.overview || ''}`),
+  },
+];
+
+/**
  * Dynamically generates a targeted question on the fly directly from the
- * remaining movies when standard questions run out or to break ties.
+ * remaining movies.
+ * 
+ * Order of Priority:
+ * 1. Storyline / Theme / Plot questions that cleanly split remaining movies (30% - 70%)
+ * 2. Release era median halving
+ * 3. Runtime halving
+ * 4. As a LAST RESORT: Actor questions (with actor photo & name attached so it can be displayed prominently)
  */
 export function generateDynamicQuestion(
   remaining: Movie[],
@@ -630,20 +737,35 @@ export function generateDynamicQuestion(
 ): WizardQuestion | null {
   if (remaining.length <= 1) return null;
 
-  // 1. Try prominent actor first if available and not yet asked
-  for (const actor of topActors) {
-    const qId = `dyn_actor_${actor.id}`;
-    if (!askedIds.has(qId) && actor.movieIds.size < remaining.length) {
-      return {
-        id: qId,
-        question: `Does it star ${actor.name}?`,
-        hint: actor.character ? `Character role: ${actor.character}` : undefined,
-        match: (m) => (actor.movieIds.has(Number(m.id)) ? 1.0 : 0.0),
-      };
+  // 1. First priority: Storyline / Content / Theme questions that divide the candidates
+  let bestThemeQ: WizardQuestion | null = null;
+  let bestThemeScore = -1;
+
+  for (const item of DYNAMIC_THEME_CANDIDATES) {
+    if (askedIds.has(item.id)) continue;
+    const matches = remaining.filter((m) => item.test(m)).length;
+    // Only ask if it cleanly divides between 20% and 80% of remaining candidates
+    if (matches >= 1 && matches < remaining.length) {
+      const ratio = matches / remaining.length;
+      const balanceScore = 1.0 - Math.abs(ratio - 0.5) * 2; // peaks at 50/50 split
+      if (balanceScore > bestThemeScore) {
+        bestThemeScore = balanceScore;
+        bestThemeQ = {
+          id: item.id,
+          question: item.question,
+          hint: item.hint,
+          match: (m) => (item.test(m) ? 1.0 : 0.0),
+        };
+      }
     }
   }
 
-  // 2. Try median year halving
+  // If we found a good theme question, return it before any actor question!
+  if (bestThemeQ) {
+    return bestThemeQ;
+  }
+
+  // 2. Second priority: Median Year Halving
   const years = remaining
     .map((m) => Number(m.release_date?.slice(0, 4) || 0))
     .filter((y) => y > 1920)
@@ -660,7 +782,7 @@ export function generateDynamicQuestion(
         return {
           id: qId,
           question: `Was it released in ${medianYear} or earlier?`,
-          hint: `Helps divide the remaining candidates by release era`,
+          hint: `Helps divide the remaining candidates by release year`,
           match: (m) =>
             Number(m.release_date?.slice(0, 4) || 0) <= medianYear ? 1.0 : 0.0,
         };
@@ -668,7 +790,7 @@ export function generateDynamicQuestion(
     }
   }
 
-  // 3. Try runtime halving
+  // 3. Third priority: Runtime Halving
   const runtimes = remaining
     .map((m) => m.runtime || 105)
     .sort((a, b) => a - b);
@@ -680,6 +802,22 @@ export function generateDynamicQuestion(
         id: qId,
         question: `Is it longer than ${medianRuntime} minutes?`,
         match: (m) => ((m.runtime || 105) > medianRuntime ? 1.0 : 0.0),
+      };
+    }
+  }
+
+  // 4. Last resort: Specific Actor (only when storyline & era questions are exhausted)
+  // Always attach actorPhoto and actorName so UI can display a large headshot beside the question!
+  for (const actor of topActors) {
+    const qId = `dyn_actor_${actor.id}`;
+    if (!askedIds.has(qId) && actor.movieIds.size > 0 && actor.movieIds.size < remaining.length) {
+      return {
+        id: qId,
+        question: `Does it star ${actor.name}?`,
+        hint: actor.character ? `Character role: ${actor.character}` : 'Recognize this actor?',
+        actorPhoto: actor.profile_path,
+        actorName: actor.name,
+        match: (m) => (actor.movieIds.has(Number(m.id)) ? 1.0 : 0.0),
       };
     }
   }

@@ -538,12 +538,38 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
 
           {/* Current Question Text */}
           {currentQuestion ? (
-            <div className="space-y-1.5 max-w-xl mx-auto">
-              <h2 className="text-white text-lg sm:text-xl font-extrabold tracking-tight leading-snug">
-                {currentQuestion.question}
-              </h2>
-              {currentQuestion.hint && (
-                <p className="text-neutral-400 text-xs">{currentQuestion.hint}</p>
+            <div className="space-y-2 max-w-xl mx-auto">
+              {/* If asking about a specific actor, show their picture large right by the question */}
+              {currentQuestion.actorPhoto ? (
+                <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 py-1">
+                  <div className="relative group shrink-0">
+                    <img
+                      src={currentQuestion.actorPhoto}
+                      alt={currentQuestion.actorName || 'Actor'}
+                      className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl object-cover border-2 border-amber-400 shadow-xl shadow-amber-500/10 ring-4 ring-amber-500/20"
+                    />
+                    <div className="absolute -bottom-1 -right-1 px-1.5 py-0.5 rounded-md bg-neutral-900 border border-amber-500/50 text-[10px] font-bold text-amber-400">
+                      Actor
+                    </div>
+                  </div>
+                  <div className="text-center sm:text-left space-y-1">
+                    <h2 className="text-white text-lg sm:text-2xl font-extrabold tracking-tight leading-snug">
+                      {currentQuestion.question}
+                    </h2>
+                    {currentQuestion.hint && (
+                      <p className="text-neutral-400 text-xs sm:text-sm">{currentQuestion.hint}</p>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <h2 className="text-white text-lg sm:text-xl font-extrabold tracking-tight leading-snug">
+                    {currentQuestion.question}
+                  </h2>
+                  {currentQuestion.hint && (
+                    <p className="text-neutral-400 text-xs">{currentQuestion.hint}</p>
+                  )}
+                </>
               )}
 
               {/* ── COMPACT HELPER PILLS DIRECTLY ABOVE YES/NO BUTTONS ── */}
