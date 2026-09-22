@@ -34,6 +34,7 @@ import {
   filterPoolByHistory,
   hasHardDiscoverFilters,
   formatMatchCount,
+  estimateMatchTotal,
   ActorCandidate,
   POPULAR_STUDIOS,
   MUTUAL_EXCLUSIONS,
@@ -241,8 +242,9 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
       setCurrentPage(1);
 
       const { movies: liveDiscovered, totalResults } = await queryLiveTMDbDiscover(updatedFilters, 3, 1);
-      if (totalResults > 0) setTmdbMatchTotal(totalResults);
       const hard = hasHardDiscoverFilters(updatedFilters);
+
+      const loadedBefore = allMovies.size;
 
       let workingMap: Map<string, Movie>;
       if (hard && liveDiscovered.length > 0) {
@@ -272,6 +274,11 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
         updatedClueMatches
       );
       setScoredPool(scored);
+
+      const loadedAfter = constrained.length > 0 ? constrained.length : workingMap.size;
+      setTmdbMatchTotal((prev) =>
+        estimateMatchTotal(prev, totalResults > 0 ? totalResults : null, loadedBefore || loadedAfter, loadedAfter)
+      );
       setIsQueryingTMDb(false);
 
       let nextQ = selectSmartNextQuestion(
@@ -279,7 +286,8 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
         updatedAskedIds,
         eraAnswered,
         newCount,
-        updatedHistory
+        updatedHistory,
+        candidateActors
       );
 
       if (!nextQ) {
@@ -338,6 +346,7 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
         cluster_genre_mystery: 'detective',
         cluster_genre_war: 'war',
         cluster_genre_family: 'theme_family_children',
+        family_kids: 'family_kids',
         cluster_genre_music: 'musical',
       };
       const exclusionLookupIds = [
@@ -423,17 +432,14 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
 
     const scored = scoreAllMovies(Array.from(allMovies.values()), newHistory, newClueIds);
     setScoredPool(scored);
+    const after = filterPoolByHistory(Array.from(allMovies.values()), newHistory);
+    setTmdbMatchTotal((prev) =>
+      estimateMatchTotal(prev, null, allMovies.size, after.length || 1)
+    );
 
-    let nextQ = selectSmartNextQuestion(scored, newAsked, hasAnsweredEra, newCount, newHistory);
+    let nextQ = selectSmartNextQuestion(scored, newAsked, hasAnsweredEra, newCount, newHistory, candidateActors);
     if (!nextQ) {
-      const filtered = filterPoolByHistory(
-        scored.filter((s) => s.score >= 0.5).map((s) => s.movie),
-        newHistory
-      );
-      nextQ = generateDynamicQuestion(filtered, newAsked, candidateActors);
-      if (nextQ) {
-        nextQ = { ...nextQ, focusHint: getNarrowingInsight(filtered, newCount).hint };
-      }
+      nextQ = generateDynamicQuestion(after.length ? after : scored.slice(0, 15).map((s) => s.movie), newAsked, candidateActors);
     }
     setCurrentQuestion(nextQ || null);
   };
@@ -468,17 +474,15 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
     // Re-score immediately: movies with rejected actors will be penalized and pruned
     const scored = scoreAllMovies(Array.from(allMovies.values()), newHistory, clueMatches);
     setScoredPool(scored);
+    const after = filterPoolByHistory(Array.from(allMovies.values()), newHistory);
+    setTmdbMatchTotal((prev) =>
+      estimateMatchTotal(prev, null, allMovies.size, after.length || 1)
+    );
 
-    let nextQ = selectSmartNextQuestion(scored, newAsked, hasAnsweredEra, questionCount + 1, newHistory);
+    let nextQ = selectSmartNextQuestion(scored, newAsked, hasAnsweredEra, questionCount + 1, newHistory, []);
     if (!nextQ) {
-      const filtered = filterPoolByHistory(
-        scored.filter((s) => s.score >= 0.5).map((s) => s.movie),
-        newHistory
-      );
+      const filtered = after.length ? after : scored.filter((s) => s.score >= 0.5).map((s) => s.movie);
       nextQ = generateDynamicQuestion(filtered, newAsked, []);
-      if (nextQ) {
-        nextQ = { ...nextQ, focusHint: getNarrowingInsight(filtered, questionCount + 1).hint };
-      }
     }
     setCurrentQuestion(nextQ || null);
   };
@@ -561,7 +565,8 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
       askedIds,
       hasAnsweredEra,
       questionCount,
-      history
+      history,
+      candidateActors
     );
 
     if (!nextQ) {
@@ -699,15 +704,13 @@ export const MovieFinderWizard: React.FC<MovieFinderWizardProps> = ({
                     {formatMatchCount(tmdbMatchTotal ?? displayedCandidates.length)}
                   </div>
                   <div className="text-[9px] text-neutral-500 font-semibold uppercase tracking-wider">
-                    matches left
+                    {(tmdbMatchTotal ?? 0) >= 20000 ? 'in catalog' : 'still in play'}
                   </div>
                 </>
               )}
             </div>
             <span className="text-[10px] text-neutral-500 font-semibold text-right truncate">
-              {displayedCandidates.length < (tmdbMatchTotal || 0)
-                ? `top ${displayedCandidates.length}`
-                : 'Live TMDb'}
+              {displayedCandidates[0] ? `#1 ${displayedCandidates[0].title}` : 'Live TMDb'}
             </span>
           </div>
 

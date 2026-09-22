@@ -62,6 +62,7 @@ export interface LiveDiscoverFilters {
 export const MUTUAL_EXCLUSIONS: Record<string, string[]> = {
   // Kids/Family/Animated -> Skip heavy genres
   animated: ['horror', 'crime', 'war', 'thriller', 'theme_animated', 'theme_villain_powers', 'monsters_zombies'],
+  family_kids: ['horror', 'crime', 'war', 'thriller', 'monsters_zombies', 'theme_villain_powers'],
   disney_pixar: ['horror', 'crime', 'war', 'thriller', 'theme_disney', 'theme_villain_powers', 'monsters_zombies'],
   theme_animated: ['horror', 'crime', 'war', 'thriller', 'animated', 'theme_villain_powers', 'monsters_zombies'],
   theme_disney: ['horror', 'crime', 'war', 'thriller', 'disney_pixar', 'theme_villain_powers', 'monsters_zombies'],
@@ -302,6 +303,14 @@ export const QUESTION_BANK: WizardQuestion[] = [
     match: (m) => genreWeight(m, 'Animation'),
     onYes: { with_genres: '16' },
     onNo: { without_genres: '16' },
+  },
+  {
+    id: 'family_kids',
+    question: 'Is it a family / kids movie?',
+    hint: 'Made for children or a family audience — big eliminator',
+    match: (m) => genreWeight(m, 'Family'),
+    onYes: { with_genres: '10751' },
+    onNo: { without_genres: '10751' },
   },
   {
     id: 'musical',
@@ -596,11 +605,38 @@ export async function queryLiveTMDbDiscover(
   return { movies, totalResults };
 }
 
-/** Format big TMDb counts for the header (482193 → 482,193) */
+/** Format match counts — above 20k we can't usefully show precision, so 20,000+. */
 export function formatMatchCount(n: number): string {
   if (!n || n < 0) return '—';
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
+  if (n >= 20_000) return '20,000+';
   return n.toLocaleString('en-US');
+}
+
+/**
+ * After an answer shrinks the loaded pool, scale the TMDb total down so the
+ * header actually moves (actor/soft answers don't hit discover filters).
+ */
+export function estimateMatchTotal(
+  previousTotal: number | null,
+  discoverTotal: number | null,
+  loadedBefore: number,
+  loadedAfter: number
+): number {
+  const base =
+    discoverTotal && discoverTotal > 0
+      ? discoverTotal
+      : previousTotal && previousTotal > 0
+        ? previousTotal
+        : loadedAfter;
+
+  if (base >= 20_000 && loadedAfter >= loadedBefore) return base;
+
+  if (loadedBefore > 0 && loadedAfter < loadedBefore) {
+    const scaled = Math.round(base * (loadedAfter / loadedBefore));
+    return Math.max(loadedAfter, Math.min(base, scaled));
+  }
+
+  return base;
 }
 
 // ── Live TMDb Search for Actor, Character, or Plot Keyword ───────────────────
@@ -654,7 +690,16 @@ function isHardDropQuestion(q: WizardQuestion): boolean {
   if (q.isEra) return true;
   if (q.onYes?.with_genres || q.onNo?.without_genres) return true;
   if (q.onYes?.with_companies) return true;
-  return ['animated', 'female_lead', 'disney_pixar', 'cluster_genre_animation'].includes(q.id);
+  if (
+    q.id.startsWith('dyn_actor_') ||
+    q.id.startsWith('probe_actor_') ||
+    q.id.startsWith('actor_face_')
+  ) {
+    return true; // actor yes/no must actually eliminate
+  }
+  return ['animated', 'family_kids', 'female_lead', 'disney_pixar', 'cluster_genre_animation'].includes(
+    q.id
+  );
 }
 
 /**
@@ -1201,21 +1246,85 @@ function bankByIds(ids: string[]): WizardQuestion[] {
 }
 
 /**
- * Classic electronic-20Q style picker (information gain + phased features).
+ * True only if answering this question can remove at least one movie from the pool.
+ * Never ask zero-elimination questions.
+ */
+export function questionEliminatesSomething(q: WizardQuestion, pool: Movie[]): boolean {
+  if (pool.length < 2) return false;
+  const hits = pool.filter((m) => q.match(m) >= 0.45).length;
+  return hits >= 1 && hits < pool.length;
+}
+
+/**
+ * Probe the current #1 — ask about an actor/trait unique to the leader.
+ * Yes → lock in; No → knock #1 out. Classic endgame.
+ */
+export function buildLeaderProbeQuestion(
+  scoredPool: ScoredMovie[],
+  askedIds: Set<string>,
+  topActors: ActorCandidate[] = []
+): WizardQuestion | null {
+  if (scoredPool.length < 2) return null;
+  const lead = scoredPool[0];
+  const second = scoredPool[1];
+  const gap = lead.score - second.score;
+  const pool = scoredPool.slice(0, Math.min(25, scoredPool.length)).map((s) => s.movie);
+
+  // Only enter probe mode when leader is ahead or the shortlist is small
+  if (pool.length > 12 && gap < 1.5) return null;
+
+  for (const actor of topActors) {
+    const qId = `probe_actor_${actor.id}`;
+    if (askedIds.has(qId) || askedIds.has(`dyn_actor_${actor.id}`) || askedIds.has(`actor_face_${actor.id}`)) {
+      continue;
+    }
+    if (!actor.movieIds.has(Number(lead.movie.id))) continue;
+    const inPool = pool.filter((m) => actor.movieIds.has(Number(m.id))).length;
+    if (inPool >= 1 && inPool < pool.length) {
+      return {
+        id: qId,
+        question: `Does it star ${actor.name}?`,
+        hint: `Checking #1 pick: ${lead.movie.title}`,
+        actorPhoto: actor.profile_path,
+        actorName: actor.name,
+        match: (m) => (actor.movieIds.has(Number(m.id)) ? 1.0 : 0.0),
+      };
+    }
+  }
+
+  // Trait fork: something the leader has that most others don't
+  const traitBank = bankByIds([
+    'musical', 'based_on_true', 'comedy', 'horror', 'scifi', 'romance', 'sports',
+    'outer_space', 'superhero', 'heist',
+  ]);
+  for (const q of traitBank) {
+    if (askedIds.has(q.id)) continue;
+    const leadHit = q.match(lead.movie) >= 0.55;
+    if (!leadHit) continue;
+    const hits = pool.filter((m) => q.match(m) >= 0.45).length;
+    if (hits >= 1 && hits <= Math.ceil(pool.length * 0.55)) {
+      return {
+        ...q,
+        hint: q.hint || `About the top match (${lead.movie.title})`,
+      };
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Classic 20Q picker — every question must eliminate someone.
  *
- * Phase order (only ask a question if it still divides remaining candidates):
- *  1. Year / era
- *  2. Animated vs live-action
- *  3. Core genre
- *  4. Female lead
- *  5. Setting/plot forks that still divide what's left
+ * Phases: year → animated → family → genre → lead → leader probe → splits
  */
 export function selectSmartNextQuestion(
   scoredPool: ScoredMovie[],
   askedIds: Set<string>,
   hasAnsweredEra: boolean = false,
   questionCount: number = 0,
-  history: { q: WizardQuestion; answer: WizardAnswer }[] = []
+  history: { q: WizardQuestion; answer: WizardAnswer }[] = [],
+  topActors: ActorCandidate[] = []
 ): WizardQuestion | null {
   const constrained = filterPoolByHistory(
     scoredPool.map((s) => s.movie),
@@ -1232,8 +1341,11 @@ export function selectSmartNextQuestion(
   );
   if (pool.length === 0) return null;
 
-  const withHint = (q: WizardQuestion | null): WizardQuestion | null =>
-    q ? { ...q, focusHint: undefined } : null;
+  const withHint = (q: WizardQuestion | null): WizardQuestion | null => {
+    if (!q) return null;
+    if (!questionEliminatesSomething(q, pool)) return null;
+    return { ...q, focusHint: undefined };
+  };
 
   const eraDone =
     hasAnsweredEra ||
@@ -1244,8 +1356,15 @@ export function selectSmartNextQuestion(
         id.startsWith('dyn_year_')
     );
   const animDone = ANIMATION_QUESTION_IDS.some((id) => askedIds.has(id));
+  const familyDone = askedIds.has('family_kids') || askedIds.has('theme_family_children');
   const genreAnswers = CORE_GENRE_IDS.filter((id) => askedIds.has(id)).length;
   const leadDone = askedIds.has('female_lead');
+
+  // Endgame / clear leader: probe #1 directly (actors etc.)
+  if (questionCount >= 5 || constrainedScored.length <= 12) {
+    const probe = buildLeaderProbeQuestion(constrainedScored, askedIds, topActors);
+    if (probe && questionEliminatesSomething(probe, pool)) return withHint(probe);
+  }
 
   // Phase 1: YEAR
   if (!eraDone) {
@@ -1254,48 +1373,67 @@ export function selectSmartNextQuestion(
       if (askedIds.has(id)) continue;
       const q = QUESTION_BANK.find((x) => x.id === id);
       if (!q) continue;
-      const hits = pool.filter((m) => q.match(m) >= 0.45).length;
-      const bal = balanceScore(hits, pool.length);
-      if (bal >= 0.12) return withHint(q);
+      const picked = withHint(q);
+      if (picked) return picked;
     }
   }
 
-  // Phase 2: ANIMATED? — ask whenever ANY remaining titles are animated (even if rare).
-  // Classic 20Q: a rare "yes" pins the title; a "no" cheaply drops cartoons.
+  // Phase 2: ANIMATED?
   if (!animDone) {
     const animQ = QUESTION_BANK.find((x) => x.id === 'animated');
-    if (animQ && !askedIds.has(animQ.id)) {
-      const hits = pool.filter((m) => animQ.match(m) >= 0.45).length;
-      if (hits >= 1 && hits < pool.length) return withHint(animQ);
-    }
+    const picked = animQ ? withHint(animQ) : null;
+    if (picked) return picked;
   }
 
-  // Phase 3: CORE GENRE (up to 2)
+  // Phase 3: FAMILY? — huge cut if No
+  if (!familyDone) {
+    const famQ = QUESTION_BANK.find((x) => x.id === 'family_kids');
+    const picked = famQ ? withHint(famQ) : null;
+    if (picked) return picked;
+  }
+
+  // Phase 4: CORE GENRE (prefer hard-filter genres that still split)
   if (genreAnswers < 2) {
     const genreBank = bankByIds([
       'comedy', 'horror', 'action', 'scifi', 'thriller', 'romance', 'crime',
       'fantasy_magic', 'war', 'detective', 'musical',
     ]);
-    const genreQ = pickBestSplit(pool, genreBank, askedIds, 0.18);
-    if (genreQ) return withHint(genreQ);
+    const genreQ = pickBestSplit(pool, genreBank, askedIds, 0.12);
+    const picked = genreQ ? withHint(genreQ) : null;
+    if (picked) return picked;
 
     const clusterGenre = generateClusterQuestion(pool, askedIds, true);
     if (clusterGenre && clusterGenre.id.startsWith('cluster_genre_')) {
-      return withHint(clusterGenre);
+      const pickedCluster = withHint(clusterGenre);
+      if (pickedCluster) return pickedCluster;
     }
   }
 
-  // Phase 4: FEMALE LEAD
+  // Phase 5: FEMALE LEAD
   if (!leadDone) {
-    const leadQ = pickBestSplit(pool, bankByIds(['female_lead']), askedIds, 0.1);
-    if (leadQ) return withHint(leadQ);
+    const leadQ = pickBestSplit(pool, bankByIds(['female_lead']), askedIds, 0.08);
+    const picked = leadQ ? withHint(leadQ) : null;
+    if (picked) return picked;
   }
 
-  // Phase 5: remaining discriminative forks
-  const clustered = generateClusterQuestion(pool, askedIds, true);
-  if (clustered) return withHint(clustered);
+  // Phase 6: leader probe again if not taken earlier
+  {
+    const probe = buildLeaderProbeQuestion(constrainedScored, askedIds, topActors);
+    if (probe) {
+      const picked = withHint(probe);
+      if (picked) return picked;
+    }
+  }
 
-  return withHint(selectNextQuestion(constrainedScored, askedIds, true));
+  // Phase 7: remaining splits — must still eliminate
+  const clustered = generateClusterQuestion(pool, askedIds, true);
+  if (clustered) {
+    const picked = withHint(clustered);
+    if (picked) return picked;
+  }
+
+  const bankQ = selectNextQuestion(constrainedScored, askedIds, true);
+  return withHint(bankQ);
 }
 
 /** When any question is answered, mark its conceptual twins so we never re-ask. */
