@@ -131,7 +131,7 @@ const QUESTION_BANK: QuestionDef[] = [
       { label: 'Up to PG-13', tag: 'rate_pg13', icon: '🟡' },
       { label: 'Just R', tag: 'rate_r_only', icon: '🟠' },
       { label: 'Up to R', tag: 'rate_r', icon: '🔶' },
-      { label: 'NC-17 / X', tag: 'rate_nc17', icon: '🔴' },
+      { label: 'NC-17', tag: 'rate_nc17', icon: '🔴' },
       { label: "Don't care", tag: 'rate_skip', icon: '🎲' },
     ],
   },
