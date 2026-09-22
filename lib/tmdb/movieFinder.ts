@@ -548,3 +548,138 @@ export function selectNextQuestion(
 
   return best || available[0];
 }
+
+// ── Actor Picture Identification & Dynamic On-The-Fly Questions ─────────────
+
+export interface ActorCandidate {
+  id: number;
+  name: string;
+  character?: string;
+  profile_path?: string;
+  movieCount: number;
+  movieIds: Set<number>;
+}
+
+const creditsCache = new Map<number, { cast: any[]; crew: any[] }>();
+
+export async function fetchTopActorsForCandidates(
+  movies: Movie[],
+  maxActors: number = 8
+): Promise<ActorCandidate[]> {
+  const apiKey = tmdb.getApiKey() || DEFAULT_TMDB_API_KEY;
+  const topMovies = movies.slice(0, 15);
+  const actorMap = new Map<number, ActorCandidate>();
+
+  const fetchCredits = async (m: Movie) => {
+    const numId = Number(m.id);
+    if (!numId) return;
+    let data = creditsCache.get(numId);
+    if (!data) {
+      try {
+        const res = await fetch(
+          `https://api.themoviedb.org/3/movie/${numId}/credits?api_key=${apiKey}`
+        );
+        if (res.ok) {
+          data = await res.json();
+          creditsCache.set(numId, data!);
+        }
+      } catch (err) {
+        console.warn('Credits fetch error', err);
+      }
+    }
+    if (data && data.cast && Array.isArray(data.cast)) {
+      data.cast.slice(0, 5).forEach((actor: any) => {
+        if (!actor.id || !actor.name || !actor.profile_path) return;
+        const existing = actorMap.get(actor.id);
+        if (existing) {
+          existing.movieCount += 1;
+          existing.movieIds.add(numId);
+        } else {
+          actorMap.set(actor.id, {
+            id: actor.id,
+            name: actor.name,
+            character: actor.character,
+            profile_path: `https://image.tmdb.org/t/p/w185${actor.profile_path}`,
+            movieCount: 1,
+            movieIds: new Set([numId]),
+          });
+        }
+      });
+    }
+  };
+
+  await Promise.all(topMovies.map(fetchCredits));
+
+  return Array.from(actorMap.values())
+    .filter((a) => a.profile_path && a.movieCount >= 1)
+    .sort((a, b) => b.movieCount - a.movieCount)
+    .slice(0, maxActors);
+}
+
+/**
+ * Dynamically generates a targeted question on the fly directly from the
+ * remaining movies when standard questions run out or to break ties.
+ */
+export function generateDynamicQuestion(
+  remaining: Movie[],
+  askedIds: Set<string>,
+  topActors: ActorCandidate[] = []
+): WizardQuestion | null {
+  if (remaining.length <= 1) return null;
+
+  // 1. Try prominent actor first if available and not yet asked
+  for (const actor of topActors) {
+    const qId = `dyn_actor_${actor.id}`;
+    if (!askedIds.has(qId) && actor.movieIds.size < remaining.length) {
+      return {
+        id: qId,
+        question: `Does it star ${actor.name}?`,
+        hint: actor.character ? `Character role: ${actor.character}` : undefined,
+        match: (m) => (actor.movieIds.has(Number(m.id)) ? 1.0 : 0.0),
+      };
+    }
+  }
+
+  // 2. Try median year halving
+  const years = remaining
+    .map((m) => Number(m.release_date?.slice(0, 4) || 0))
+    .filter((y) => y > 1920)
+    .sort((a, b) => a - b);
+
+  if (years.length >= 2) {
+    const medianYear = years[Math.floor(years.length / 2)];
+    const qId = `dyn_year_${medianYear}`;
+    if (!askedIds.has(qId)) {
+      const beforeCount = remaining.filter(
+        (m) => Number(m.release_date?.slice(0, 4) || 0) <= medianYear
+      ).length;
+      if (beforeCount > 0 && beforeCount < remaining.length) {
+        return {
+          id: qId,
+          question: `Was it released in ${medianYear} or earlier?`,
+          hint: `Helps divide the remaining candidates by release era`,
+          match: (m) =>
+            Number(m.release_date?.slice(0, 4) || 0) <= medianYear ? 1.0 : 0.0,
+        };
+      }
+    }
+  }
+
+  // 3. Try runtime halving
+  const runtimes = remaining
+    .map((m) => m.runtime || 105)
+    .sort((a, b) => a - b);
+  if (runtimes.length >= 4) {
+    const medianRuntime = runtimes[Math.floor(runtimes.length / 2)];
+    const qId = `dyn_runtime_${medianRuntime}`;
+    if (!askedIds.has(qId) && medianRuntime > 70) {
+      return {
+        id: qId,
+        question: `Is it longer than ${medianRuntime} minutes?`,
+        match: (m) => ((m.runtime || 105) > medianRuntime ? 1.0 : 0.0),
+      };
+    }
+  }
+
+  return null;
+}
