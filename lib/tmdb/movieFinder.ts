@@ -10,6 +10,7 @@ export interface DiscoverParamUpdate {
   without_genres?: string;
   with_keywords?: string;
   without_keywords?: string;
+  with_companies?: string;
   primary_release_date_gte?: string;
   primary_release_date_lte?: string;
   vote_count_gte?: number;
@@ -21,9 +22,8 @@ export interface WizardQuestion {
   id: string;
   question: string;
   hint?: string;
-  // Fuzzy match degree (0.0 to 1.0)
+  isEra?: boolean;
   match: (m: Movie) => number;
-  // Live TMDB Discover filter updates
   onYes?: DiscoverParamUpdate;
   onNo?: DiscoverParamUpdate;
 }
@@ -38,6 +38,7 @@ export interface LiveDiscoverFilters {
   without_genres: Set<string>;
   with_keywords: Set<string>;
   without_keywords: Set<string>;
+  with_companies?: string;
   primary_release_date_gte?: string;
   primary_release_date_lte?: string;
   vote_count_gte?: number;
@@ -51,9 +52,42 @@ export function createInitialFilters(): LiveDiscoverFilters {
     without_genres: new Set(),
     with_keywords: new Set(),
     without_keywords: new Set(),
-    vote_count_gte: 20, // quality filter: keeps all real movies, eliminates 1-vote noise
+    vote_count_gte: 15,
   };
 }
+
+export interface StudioOption {
+  id: string;
+  label: string;
+  companyId: string;
+}
+
+export const POPULAR_STUDIOS: StudioOption[] = [
+  { id: 'all', label: 'All Studios', companyId: '' },
+  { id: 'disney', label: 'Disney / Pixar', companyId: '2|3' },
+  { id: 'marvel', label: 'Marvel', companyId: '420' },
+  { id: 'dreamworks', label: 'DreamWorks', companyId: '521' },
+  { id: 'ghibli', label: 'Studio Ghibli', companyId: '10342' },
+  { id: 'warner', label: 'Warner Bros', companyId: '174' },
+  { id: 'a24', label: 'A24', companyId: '41077' },
+];
+
+export interface DecadeOption {
+  id: string;
+  label: string;
+  gte?: string;
+  lte?: string;
+}
+
+export const DECADE_OPTIONS: DecadeOption[] = [
+  { id: 'all', label: 'Any Year' },
+  { id: '2020s', label: '2020s', gte: '2020-01-01' },
+  { id: '2010s', label: '2010s', gte: '2010-01-01', lte: '2019-12-31' },
+  { id: '2000s', label: '2000s', gte: '2000-01-01', lte: '2009-12-31' },
+  { id: '90s', label: '1990s', gte: '1990-01-01', lte: '1999-12-31' },
+  { id: '80s', label: '1980s', gte: '1980-01-01', lte: '1989-12-31' },
+  { id: 'classics', label: 'Pre-1980', lte: '1979-12-31' },
+];
 
 // ── Match helpers returning values between 0.0 and 1.0 ───────────────────────
 
@@ -85,14 +119,15 @@ const textMatch = (m: Movie, ...keywords: string[]): number => {
   return 0;
 };
 
-// ── Question Bank with Live TMDB Discover Mappings ───────────────────────────
+// ── Clear, single-focus question bank (No confusing "this or that") ───────────
 
 export const QUESTION_BANK: WizardQuestion[] = [
-  // Eras
+  // Eras (flagged as isEra: true so answering or picking an era skips the rest)
   {
     id: 'era_modern',
     question: 'Was it released after the year 2000?',
-    hint: '2001 or later',
+    hint: 'Released in the 21st century',
+    isEra: true,
     match: (m) => {
       const y = Number(m.release_date?.slice(0, 4) || 0);
       if (y > 2000) return 1.0;
@@ -104,8 +139,9 @@ export const QUESTION_BANK: WizardQuestion[] = [
   },
   {
     id: 'era_2010s',
-    question: 'Was it released in the 2010s or 2020s?',
-    hint: '2010 to present',
+    question: 'Was it released in the 2010s or later?',
+    hint: '2010 to present day',
+    isEra: true,
     match: (m) => {
       const y = Number(m.release_date?.slice(0, 4) || 0);
       if (y >= 2010) return 1.0;
@@ -118,21 +154,24 @@ export const QUESTION_BANK: WizardQuestion[] = [
   {
     id: 'era_90s',
     question: 'Was it released in the 1990s?',
-    hint: '1990–1999',
+    hint: '1990 to 1999',
+    isEra: true,
     match: (m) => eraWeight(m, 1990, 1999),
     onYes: { primary_release_date_gte: '1990-01-01', primary_release_date_lte: '1999-12-31' },
   },
   {
     id: 'era_80s',
     question: 'Was it released in the 1980s?',
-    hint: '1980–1989',
+    hint: '1980 to 1989',
+    isEra: true,
     match: (m) => eraWeight(m, 1980, 1989),
     onYes: { primary_release_date_gte: '1980-01-01', primary_release_date_lte: '1989-12-31' },
   },
   {
     id: 'era_classic',
-    question: 'Is it an older classic — released before 1980?',
-    hint: 'Pre-1980 cinema',
+    question: 'Is it an older classic film made before 1980?',
+    hint: '1970s or earlier',
+    isEra: true,
     match: (m) => {
       const y = Number(m.release_date?.slice(0, 4) || 9999);
       if (y < 1980) return 1.0;
@@ -143,241 +182,190 @@ export const QUESTION_BANK: WizardQuestion[] = [
     onNo: { primary_release_date_gte: '1980-01-01' },
   },
 
-  // Genres
+  // Studio / Style
+  {
+    id: 'disney_pixar',
+    question: 'Is it a Walt Disney or Pixar movie?',
+    hint: 'Disney classics, Pixar animations, Disney live action',
+    match: (m) => {
+      const t = `${m.title || ''} ${m.overview || ''}`.toLowerCase();
+      if (t.includes('disney') || t.includes('pixar')) return 1.0;
+      return 0;
+    },
+    onYes: { with_companies: '2|3' },
+  },
   {
     id: 'animated',
-    question: 'Is it animated — cartoon, CGI, or anime?',
-    hint: 'Disney, Pixar, Ghibli, DreamWorks, anime...',
+    question: 'Is it an animated movie?',
+    hint: 'Hand-drawn, CGI, 3D animated, or anime',
     match: (m) => genreWeight(m, 'Animation'),
     onYes: { with_genres: '16' },
     onNo: { without_genres: '16' },
   },
   {
-    id: 'comedy',
-    question: 'Is it funny — does it make you laugh?',
-    hint: 'Comedy, dark comedy, comedy-adventure',
+    id: 'musical',
+    question: 'Is it a musical with singing and songs?',
+    hint: 'Characters sing songs that drive the story',
+    match: (m) => genreWeight(m, 'Music'),
+    onYes: { with_genres: '10402' },
+  },
+  {
+    id: 'superhero',
+    question: 'Does it feature superheroes?',
+    hint: 'Avengers, Batman, Spider-Man, Superman, X-Men, etc.',
     match: (m) => {
-      const gw = genreWeight(m, 'Comedy');
-      if (gw > 0) return gw;
-      return textMatch(m, 'hilarious', 'funny', 'humorous', 'comedy');
+      const t = `${m.title || ''} ${m.overview || ''}`.toLowerCase();
+      if (/\b(spider-man|batman|superman|iron man|avengers|marvel|dc comics|thor|captain america|x-men|joker)\b/.test(t)) return 1.0;
+      return textMatch(m, 'superhero', 'super power');
     },
+    onYes: { with_keywords: '9715|18073' },
+  },
+  {
+    id: 'comedy',
+    question: 'Is it primarily a comedy intended to make you laugh?',
+    match: (m) => genreWeight(m, 'Comedy'),
     onYes: { with_genres: '35' },
     onNo: { without_genres: '35' },
   },
   {
+    id: 'horror',
+    question: 'Is it a horror movie designed to scare you?',
+    match: (m) => genreWeight(m, 'Horror'),
+    onYes: { with_genres: '27' },
+    onNo: { without_genres: '27' },
+  },
+  {
     id: 'action',
-    question: 'Is it an action movie with fights, chases, or shootouts?',
-    match: (m) => {
-      const gw = genreWeight(m, 'Action', 'Adventure');
-      if (gw > 0) return gw;
-      return textMatch(m, 'fight', 'chase', 'gun', 'battle', 'warrior', 'martial arts');
-    },
+    question: 'Is it an action movie with fights or chases?',
+    match: (m) => genreWeight(m, 'Action'),
     onYes: { with_genres: '28' },
     onNo: { without_genres: '28' },
   },
   {
     id: 'scifi',
-    question: 'Is it science fiction — space, robots, time travel, or future tech?',
-    match: (m) => {
-      const gw = genreWeight(m, 'Sci-Fi', 'Science Fiction');
-      if (gw > 0) return gw;
-      return textMatch(m, 'future', 'space', 'robot', 'alien', 'cyber', 'technology');
-    },
+    question: 'Is it a science fiction movie?',
+    hint: 'Futuristic technology, sci-fi themes',
+    match: (m) => genreWeight(m, 'Sci-Fi', 'Science Fiction'),
     onYes: { with_genres: '878' },
     onNo: { without_genres: '878' },
   },
   {
-    id: 'horror',
-    question: 'Is it a horror or scary movie?',
-    hint: 'Jump scares, monsters, psychological dread',
-    match: (m) => {
-      const gw = genreWeight(m, 'Horror');
-      if (gw > 0) return gw;
-      return textMatch(m, 'haunt', 'killer', 'scary', 'demon', 'terror');
-    },
-    onYes: { with_genres: '27' },
-    onNo: { without_genres: '27' },
-  },
-  {
-    id: 'thriller',
-    question: 'Is it a suspenseful thriller or mystery?',
-    hint: 'Tense, edge-of-your-seat, unexpected twists',
-    match: (m) => genreWeight(m, 'Thriller', 'Mystery'),
-    onYes: { with_genres: '53' },
-    onNo: { without_genres: '53' },
-  },
-  {
-    id: 'romance',
-    question: 'Is there a prominent love story or romantic relationship?',
-    match: (m) => {
-      const gw = genreWeight(m, 'Romance');
-      if (gw > 0) return gw;
-      return textMatch(m, 'love', 'relationship', 'romance', 'couple', 'marriage');
-    },
-    onYes: { with_genres: '10749' },
-    onNo: { without_genres: '10749' },
-  },
-  {
-    id: 'drama',
-    question: 'Is it primarily a serious drama — emotional, character-driven?',
-    match: (m) => {
-      const isD = genreWeight(m, 'Drama');
-      const isAct = genreWeight(m, 'Action', 'Horror');
-      if (isD > 0 && isAct === 0) return 1.0;
-      if (isD > 0) return 0.5;
-      return 0;
-    },
-    onYes: { with_genres: '18' },
-  },
-  {
-    id: 'fantasy',
-    question: 'Does it involve magic, mythical creatures, or a fantasy world?',
-    hint: 'Lord of the Rings, Harry Potter, wizards, mythical quests...',
-    match: (m) => {
-      const gw = genreWeight(m, 'Fantasy');
-      if (gw > 0) return gw;
-      return textMatch(m, 'magic', 'wizard', 'witch', 'dragon', 'spell', 'kingdom');
-    },
+    id: 'fantasy_magic',
+    question: 'Does it involve magic or a fantasy world?',
+    hint: 'Wizards, spells, magical realms, mythical creatures',
+    match: (m) => genreWeight(m, 'Fantasy'),
     onYes: { with_genres: '14' },
     onNo: { without_genres: '14' },
   },
   {
+    id: 'romance',
+    question: 'Is there a central romantic love story?',
+    match: (m) => genreWeight(m, 'Romance'),
+    onYes: { with_genres: '10749' },
+    onNo: { without_genres: '10749' },
+  },
+  {
+    id: 'thriller',
+    question: 'Is it a suspenseful thriller?',
+    match: (m) => genreWeight(m, 'Thriller'),
+    onYes: { with_genres: '53' },
+    onNo: { without_genres: '53' },
+  },
+  {
     id: 'crime',
-    question: 'Does it involve crime — heists, gangsters, the mob, or detectives?',
+    question: 'Does it revolve around criminals, gangsters, or police?',
     match: (m) => genreWeight(m, 'Crime'),
     onYes: { with_genres: '80' },
   },
   {
     id: 'war',
-    question: 'Is it set during a war with soldiers and military battles?',
-    match: (m) => {
-      const gw = genreWeight(m, 'War');
-      if (gw > 0) return gw;
-      return textMatch(m, 'world war', 'soldier', 'army', 'combat', 'troops', 'military');
-    },
+    question: 'Is it set during a military war with soldiers?',
+    match: (m) => genreWeight(m, 'War'),
     onYes: { with_genres: '10752' },
     onNo: { without_genres: '10752' },
   },
   {
-    id: 'superhero',
-    question: 'Does it feature superheroes or comic book characters?',
-    hint: 'Marvel, DC, X-Men, Avengers, Batman, Spider-Man...',
-    match: (m) => {
-      const t = `${m.title || ''} ${m.overview || ''}`.toLowerCase();
-      if (/\b(spider-man|batman|superman|iron man|avengers|marvel|dc comics|thor|captain america|x-men|joker)\b/.test(t)) return 1.0;
-      return textMatch(m, 'superhero', 'super power', 'mutant');
-    },
-    onYes: { with_keywords: '9715|18073' },
-  },
-  {
-    id: 'based_on_true',
-    question: 'Is it based on a true story or real historical events?',
-    match: (m) => {
-      const gw = genreWeight(m, 'History', 'Biography');
-      if (gw > 0) return 1.0;
-      return textMatch(m, 'true story', 'based on', 'biography', 'real life', 'historic');
-    },
-    onYes: { with_genres: '36' },
+    id: 'detective',
+    question: 'Does it center on solving a murder or mystery?',
+    hint: 'Whodunit, detective investigation',
+    match: (m) => genreWeight(m, 'Mystery'),
+    onYes: { with_genres: '9648' },
   },
 
-  // Keywords and specific plot devices
+  // Setting and Plot Devices
+  {
+    id: 'outer_space',
+    question: 'Does the story take place in outer space?',
+    hint: 'Spaceships, other planets, astronauts, galaxies',
+    match: (m) => textMatch(m, 'space', 'spaceship', 'planet', 'galaxy', 'astronaut', 'orbit'),
+    onYes: { with_keywords: '9882|3801' },
+  },
   {
     id: 'time_travel',
-    question: 'Does it involve time travel or a repeating time loop?',
-    hint: 'Back to the Future, Groundhog Day, Interstellar, Edge of Tomorrow...',
-    match: (m) => textMatch(m, 'time travel', 'time loop', 'timeline', 'wormhole', 'relativity', 'loop'),
+    question: 'Does it involve time travel or a time loop?',
+    match: (m) => textMatch(m, 'time travel', 'time loop', 'timeline', 'wormhole'),
     onYes: { with_keywords: '4379' },
   },
   {
     id: 'heist',
-    question: 'Is it a heist, robbery, or bank job movie?',
-    hint: "Ocean's Eleven, Inception, Heat, Baby Driver, The Italian Job...",
-    match: (m) => textMatch(m, 'heist', 'robbery', 'bank', 'steal', 'thief', 'vault', 'con artist'),
+    question: 'Does it involve a heist, bank robbery, or major theft?',
+    match: (m) => textMatch(m, 'heist', 'robbery', 'bank', 'steal', 'vault'),
     onYes: { with_keywords: '10051|9717' },
   },
   {
     id: 'spy',
-    question: 'Does it feature spies, secret agents, or professional assassins?',
-    hint: 'James Bond, Jason Bourne, Mission Impossible, John Wick, Kingsman...',
-    match: (m) => textMatch(m, 'spy', 'agent', 'assassin', 'hitman', 'cia', 'mi6', 'espionage'),
+    question: 'Does it feature secret agents, spies, or assassins?',
+    match: (m) => textMatch(m, 'spy', 'agent', 'assassin', 'hitman', 'cia', 'mi6'),
     onYes: { with_keywords: '470|9713' },
   },
   {
-    id: 'space',
-    question: 'Does it take place in space, on spaceships, or another planet?',
-    hint: 'Star Wars, Interstellar, Alien, Dune, Gravity, The Martian...',
-    match: (m) => textMatch(m, 'space', 'spaceship', 'planet', 'galaxy', 'astronaut', 'orbit', 'alien'),
-    onYes: { with_keywords: '9882|3801' },
+    id: 'animal_protagonist',
+    question: 'Is the main character an animal?',
+    hint: 'Dog, cat, lion, fish, bear, etc.',
+    match: (m) => textMatch(m, 'dog', 'puppy', 'cat', 'lion', 'fish', 'bear', 'animal', 'wolf'),
+    onYes: { with_keywords: '2085|209212' },
   },
   {
-    id: 'ai_robots',
-    question: 'Does it involve artificial intelligence, robots, cyborgs, or virtual reality?',
-    hint: 'The Matrix, Terminator, Ex Machina, Blade Runner, I Robot...',
-    match: (m) => textMatch(m, 'robot', 'artificial intelligence', 'cyborg', 'matrix', 'android', 'simulation'),
+    id: 'robots_ai',
+    question: 'Does it feature robots or artificial intelligence?',
+    match: (m) => textMatch(m, 'robot', 'artificial intelligence', 'cyborg', 'android'),
     onYes: { with_keywords: '310|14544' },
   },
   {
-    id: 'survival',
-    question: 'Is it a survival story — stranded on an island, plane crash, or trapped in the wild?',
-    hint: 'Cast Away, The Martian, 127 Hours, The Revenant, Life of Pi...',
-    match: (m) => textMatch(m, 'stranded', 'survival', 'plane crash', 'shipwreck', 'deserted', 'lost in', 'trapped'),
-    onYes: { with_keywords: '10085|10705' },
-  },
-  {
-    id: 'detective',
-    question: 'Does it follow a detective or investigator solving a murder mystery?',
-    hint: 'Knives Out, Se7en, Zodiac, Sherlock Holmes, Shutter Island...',
-    match: (m) => textMatch(m, 'detective', 'murder', 'investigat', 'serial killer', 'whodunit', 'clue'),
-    onYes: { with_genres: '9648' },
-  },
-  {
     id: 'monsters_zombies',
-    question: 'Does it feature zombies, vampires, werewolves, or monsters?',
-    hint: 'World War Z, 28 Days Later, Dracula, Twilight, Godzilla...',
-    match: (m) => textMatch(m, 'zombie', 'vampire', 'monster', 'creature', 'undead', 'infection', 'godzilla'),
+    question: 'Does it feature zombies, vampires, or monsters?',
+    match: (m) => textMatch(m, 'zombie', 'vampire', 'monster', 'creature', 'undead'),
     onYes: { with_keywords: '12377|3133' },
   },
   {
-    id: 'cars_racing',
-    question: 'Are fast cars, street racing, or driving a major focus?',
-    hint: 'Fast and Furious, Baby Driver, Mad Max, Ford v Ferrari...',
-    match: (m) => textMatch(m, 'racing', 'fast car', 'street race', 'driver', 'ferrari', 'chase car'),
+    id: 'survival',
+    question: 'Is it a survival story — stranded or trapped alone?',
+    hint: 'Island, plane crash, shipwreck, wild wilderness',
+    match: (m) => textMatch(m, 'stranded', 'survival', 'plane crash', 'shipwreck', 'deserted'),
+    onYes: { with_keywords: '10085|10705' },
+  },
+  {
+    id: 'racing_cars',
+    question: 'Are fast cars or driving a main focus of the movie?',
+    match: (m) => textMatch(m, 'racing', 'fast car', 'street race', 'driver', 'speed'),
     onYes: { with_keywords: '830|10087' },
   },
   {
-    id: 'family_kids',
-    question: 'Is it family-friendly, or is the main character a kid/teenager?',
-    hint: 'Harry Potter, Home Alone, E.T., Goonies, Stranger Things vibes...',
-    match: (m) => {
-      const gw = genreWeight(m, 'Family', 'Animation');
-      if (gw > 0) return 1.0;
-      return textMatch(m, 'young boy', 'young girl', 'teenager', 'child', 'orphan', 'school', 'kids');
-    },
-    onYes: { with_genres: '10751' },
+    id: 'sports',
+    question: 'Is the movie about an athlete or sports team?',
+    match: (m) => textMatch(m, 'boxing', 'boxer', 'coach', 'championship', 'football', 'baseball', 'basketball'),
   },
   {
-    id: 'blockbuster',
-    question: 'Was it a massive, world-famous Hollywood blockbuster?',
-    hint: 'Huge box office release; heavily advertised',
-    match: (m) => {
-      const votes = m.vote_count || 0;
-      if (votes >= 10000) return 1.0;
-      if (votes >= 5000) return 0.6;
-      return 0.2;
-    },
-    onYes: { vote_count_gte: 4000 },
+    id: 'based_on_true',
+    question: 'Is it based on a true story or real historical events?',
+    match: (m) => genreWeight(m, 'History', 'Biography'),
+    onYes: { with_genres: '36' },
   },
   {
-    id: 'award_winner',
-    question: 'Is it critically acclaimed — high ratings, awards, or Oscar-worthy?',
-    hint: 'Godfather, Parasite, Shawshank, Pulp Fiction...',
-    match: (m) => {
-      const r = m.vote_average || 0;
-      if (r >= 8.1) return 1.0;
-      if (r >= 7.6) return 0.6;
-      return 0.2;
-    },
-    onYes: { vote_average_gte: 7.8, vote_count_gte: 300 },
+    id: 'high_rated',
+    question: 'Is it critically acclaimed — high ratings or major awards?',
+    match: (m) => (m.vote_average >= 7.8 ? 1.0 : 0.2),
+    onYes: { vote_average_gte: 7.7, vote_count_gte: 200 },
   },
 ];
 
@@ -385,7 +373,8 @@ export const QUESTION_BANK: WizardQuestion[] = [
 
 export async function queryLiveTMDbDiscover(
   filters: LiveDiscoverFilters,
-  pages: number = 2
+  pages: number = 2,
+  startPage: number = 1
 ): Promise<Movie[]> {
   const apiKey = tmdb.getApiKey() || DEFAULT_TMDB_API_KEY;
   const baseUrl = 'https://api.themoviedb.org/3/discover/movie';
@@ -410,6 +399,9 @@ export async function queryLiveTMDbDiscover(
   if (filters.without_keywords.size > 0) {
     query += `&without_keywords=${Array.from(filters.without_keywords).join(',')}`;
   }
+  if (filters.with_companies) {
+    query += `&with_companies=${filters.with_companies}`;
+  }
   if (filters.vote_count_gte) {
     query += `&vote_count.gte=${filters.vote_count_gte}`;
   }
@@ -420,7 +412,7 @@ export async function queryLiveTMDbDiscover(
     query += `&with_original_language=${filters.with_original_language}`;
   }
 
-  const pageList = Array.from({ length: pages }, (_, i) => i + 1);
+  const pageList = Array.from({ length: pages }, (_, i) => startPage + i);
   const requests = pageList.map(async (p) => {
     try {
       const res = await fetch(`${baseUrl}?${query}&page=${p}`);
@@ -438,7 +430,7 @@ export async function queryLiveTMDbDiscover(
   return results.flat().filter((m) => m && m.poster_path && m.title);
 }
 
-// ── Live TMDb Keyword / Actor Clue Search ─────────────────────────────────────
+// ── Live TMDb Search for Actor, Character, or Plot Keyword ───────────────────
 
 export async function searchLiveTMDb(query: string): Promise<Movie[]> {
   const clean = query.trim();
@@ -452,7 +444,7 @@ export async function searchLiveTMDb(query: string): Promise<Movie[]> {
     const movies: Movie[] = [];
     if (movieRes.ok) {
       const mData = await movieRes.json();
-      (mData.results || []).slice(0, 15).forEach((m: any) => {
+      (mData.results || []).slice(0, 20).forEach((m: any) => {
         if (m.poster_path) movies.push(tmdb.formatTMDbMovie(m));
       });
     }
@@ -466,7 +458,7 @@ export async function searchLiveTMDb(query: string): Promise<Movie[]> {
           const pMovies = (cData.cast || []).concat(cData.crew || [])
             .filter((item: any) => item.poster_path)
             .sort((a: any, b: any) => (b.popularity || 0) - (a.popularity || 0))
-            .slice(0, 15);
+            .slice(0, 20);
           pMovies.forEach((m: any) => movies.push(tmdb.formatTMDbMovie(m)));
         }
       }
@@ -478,7 +470,7 @@ export async function searchLiveTMDb(query: string): Promise<Movie[]> {
   }
 }
 
-// ── Probabilistic Scoring Algorithm Across Live Pool ─────────────────────────
+// ── Probabilistic Scoring Across Candidate Pool ──────────────────────────────
 
 export function scoreAllMovies(
   movies: Movie[],
@@ -486,10 +478,10 @@ export function scoreAllMovies(
   clueMatches: Set<string> = new Set()
 ): ScoredMovie[] {
   return movies.map((m) => {
-    let score = Math.min((m.vote_count || 0) / 4000, 2.5); // mild prior for known films
+    let score = Math.min((m.vote_count || 0) / 4000, 2.5);
 
     if (clueMatches.has(String(m.id))) {
-      score += 15.0; // massive boost if user provided a matching clue
+      score += 20.0; // massive priority boost if user clue matches
     }
 
     for (const { q, answer } of history) {
@@ -501,7 +493,7 @@ export function scoreAllMovies(
           else score -= 1.4;
           break;
         case 'sometimes':
-          if (match >= 0.2 && match <= 0.8) score += 2.5; // sweet spot for hybrid/partial
+          if (match >= 0.2 && match <= 0.8) score += 2.5;
           else if (match > 0.8) score += 1.2;
           else score -= 0.3;
           break;
@@ -519,17 +511,23 @@ export function scoreAllMovies(
   }).sort((a, b) => b.score - a.score);
 }
 
-// ── Adaptive Question Selector ───────────────────────────────────────────────
+// ── Next Question Selector ───────────────────────────────────────────────────
 
 export function selectNextQuestion(
   scoredPool: ScoredMovie[],
-  askedIds: Set<string>
+  askedIds: Set<string>,
+  hasAnsweredEra: boolean = false
 ): WizardQuestion | null {
-  const available = QUESTION_BANK.filter((q) => !askedIds.has(q.id));
+  const available = QUESTION_BANK.filter((q) => {
+    if (askedIds.has(q.id)) return false;
+    // If the user already answered or selected an era, never ask another era question
+    if (hasAnsweredEra && q.isEra) return false;
+    return true;
+  });
+
   if (available.length === 0) return null;
 
-  // Split top 25 current leaders
-  const topContenders = scoredPool.slice(0, 25).map((s) => s.movie);
+  const topContenders = scoredPool.slice(0, 30).map((s) => s.movie);
   if (topContenders.length === 0) return available[0];
 
   let best: WizardQuestion | null = null;
@@ -541,7 +539,6 @@ export function selectNextQuestion(
       sumMatch += q.match(m);
     }
     const avg = sumMatch / topContenders.length;
-    // Closest to 0.5 is ideal 50/50 split
     const score = 1.0 - Math.abs(avg - 0.5) * 2;
     if (score > bestScore) {
       bestScore = score;
