@@ -29,24 +29,41 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
 }) => {
   const [navVisible, setNavVisible] = useState(true);
   const lastScrollTopRef = useRef(0);
+  const ignoreScrollUntilRef = useRef(0);
 
-  // Hide bottom nav on scroll down inside any nested scroller; show on scroll up
+  // Hide bottom nav on scroll down inside nested scrollers — only when there's real overflow
   useEffect(() => {
     const onScroll = (e: Event) => {
       const t = e.target;
       if (!(t instanceof HTMLElement)) return;
-      // Ignore tiny non-scroll containers
-      if (t.scrollHeight <= t.clientHeight + 8) return;
+      const overflow = t.scrollHeight - t.clientHeight;
+      if (overflow < 160) return;
+
+      const now = Date.now();
+      if (now < ignoreScrollUntilRef.current) return;
+
       const y = t.scrollTop;
       const delta = y - lastScrollTopRef.current;
-      if (y < 40) {
-        setNavVisible(true);
-      } else if (delta > 10) {
-        setNavVisible(false);
-      } else if (delta < -10) {
-        setNavVisible(true);
-      }
       lastScrollTopRef.current = y;
+
+      if (y < 24) {
+        setNavVisible((v) => {
+          if (!v) ignoreScrollUntilRef.current = now + 280;
+          return true;
+        });
+        return;
+      }
+      if (delta > 18) {
+        setNavVisible((v) => {
+          if (v) ignoreScrollUntilRef.current = now + 280;
+          return false;
+        });
+      } else if (delta < -18) {
+        setNavVisible((v) => {
+          if (!v) ignoreScrollUntilRef.current = now + 280;
+          return true;
+        });
+      }
     };
     document.addEventListener('scroll', onScroll, true);
     return () => document.removeEventListener('scroll', onScroll, true);

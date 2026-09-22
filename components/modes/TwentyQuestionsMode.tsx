@@ -355,7 +355,8 @@ function scoreMovie(movie: Movie, tags: string[]): number {
   const runtime = movie.runtime || 120;
   const genres = movie.genres || [];
 
-  if (tags.includes('comedy') && genres.includes('Comedy')) score += 12;
+  if (tags.includes('comedy') && genres.includes('Comedy') && !genres.includes('Horror')) score += 12;
+  if (tags.includes('comedy') && genres.includes('Comedy') && genres.includes('Horror')) score -= 8;
   if (tags.includes('thriller') && genres.some((g) => ['Thriller', 'Crime', 'Mystery'].includes(g))) score += 12;
   if (tags.includes('horror') && genres.includes('Horror')) score += 14;
   if (tags.includes('action') && genres.some((g) => ['Action', 'Adventure'].includes(g))) score += 12;
@@ -457,6 +458,10 @@ function hardPasses(movie: Movie, tags: string[]): boolean {
   if (tags.includes('scifi') && !genres.some((g) => ['Science Fiction', 'Fantasy'].includes(g))) return false;
   if (tags.includes('drama') && !genres.includes('Drama')) return false;
 
+  // Comedy means comedy-first — not horror comedies like Evil Dead 2 unless Horror was also chosen
+  if (tags.includes('comedy') && !tags.includes('horror') && genres.includes('Horror')) return false;
+  if (tags.includes('romance') && !tags.includes('horror') && genres.includes('Horror')) return false;
+
   if (tags.includes('era_2020s') && !(releaseYear >= 2020)) return false;
   if (tags.includes('era_2010s') && !(releaseYear >= 2010 && releaseYear <= 2019)) return false;
   if (tags.includes('era_2000s') && !(releaseYear >= 2000 && releaseYear <= 2009)) return false;
@@ -513,6 +518,10 @@ function poolQueryFromTags(tags: string[]): PoolQuery {
   if (tags.includes('want_kids') && !q.genreId) q.genreId = FAMILY_GENRE;
   if (tags.includes('want_adult')) {
     q.withoutGenreIds = [ANIMATION_GENRE, FAMILY_GENRE];
+  }
+  // Keep straight comedies from being flooded with horror-comedies
+  if (tags.includes('comedy') && !tags.includes('horror')) {
+    q.withoutGenreIds = [...(q.withoutGenreIds || []), 27];
   }
 
   if (tags.includes('era_2020s')) {
@@ -673,6 +682,7 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
   const listRef = useRef<HTMLDivElement>(null);
   const activeQueryRef = useRef<PoolQuery>({});
   const lastScrollTopRef = useRef(0);
+  const ignoreScrollUntilRef = useRef(0);
 
   const currentQ = QUESTION_BANK[Math.min(currentStep, QUESTION_BANK.length - 1)];
   const answeredCount = Object.keys(answers).length;
@@ -861,16 +871,9 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
     const el = listRef.current;
     if (!el) return;
     const y = el.scrollTop;
-    const delta = y - lastScrollTopRef.current;
-    if (y < 48) {
-      setChromeVisible(true);
-    } else if (delta > 10) {
-      setChromeVisible(false);
-    } else if (delta < -10) {
-      setChromeVisible(true);
-    }
-    lastScrollTopRef.current = y;
+    const now = Date.now();
 
+    // Lazy-load near bottom (always — independent of chrome hide)
     if (y + el.clientHeight >= el.scrollHeight - 160) {
       if (visibleCount < ranked.length) {
         setVisibleCount((c) => Math.min(c + PAGE_SIZE, ranked.length));
@@ -878,10 +881,42 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
         void loadMoreFromTmdb();
       }
     }
+
+    // Short lists: chrome hide/show changes layout height and causes scroll flutter — skip it
+    const overflow = el.scrollHeight - el.clientHeight;
+    if (overflow < 160 || now < ignoreScrollUntilRef.current) {
+      lastScrollTopRef.current = y;
+      return;
+    }
+
+    const delta = y - lastScrollTopRef.current;
+    lastScrollTopRef.current = y;
+
+    if (y < 24) {
+      if (!chromeVisible) {
+        ignoreScrollUntilRef.current = now + 280;
+        setChromeVisible(true);
+      }
+      return;
+    }
+    if (delta > 18 && chromeVisible) {
+      ignoreScrollUntilRef.current = now + 280;
+      setChromeVisible(false);
+    } else if (delta < -18 && !chromeVisible) {
+      ignoreScrollUntilRef.current = now + 280;
+      setChromeVisible(true);
+    }
   };
 
   const visible = ranked.slice(0, visibleCount);
   const displayTotal = catalogTotal && catalogTotal > ranked.length ? catalogTotal : ranked.length;
+
+  // Tiny result sets: never fight the user with auto-hiding chrome
+  useEffect(() => {
+    if (ranked.length > 0 && ranked.length <= 10) {
+      setChromeVisible(true);
+    }
+  }, [ranked.length, foundMovie]);
 
   // ── Found celebration + endlessly scrollable close matches ──
   if (foundMovie) {
