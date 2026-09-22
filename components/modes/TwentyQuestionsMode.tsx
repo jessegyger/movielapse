@@ -34,6 +34,7 @@ interface TwentyQuestionsModeProps {
 
 interface QuestionDef {
   id: number;
+  category: string;
   question: string;
   options: { label: string; tag: string; icon: string }[];
 }
@@ -42,6 +43,7 @@ interface QuestionDef {
 const QUESTION_BANK: QuestionDef[] = [
   {
     id: 1,
+    category: 'Audience',
     question: 'Animated, kids, or adult?',
     options: [
       { label: 'Animated', tag: 'want_animated', icon: '🎨' },
@@ -52,6 +54,7 @@ const QUESTION_BANK: QuestionDef[] = [
   },
   {
     id: 2,
+    category: 'Genre',
     question: 'What kind of movie?',
     options: [
       { label: 'Comedy', tag: 'comedy', icon: '😂' },
@@ -66,6 +69,7 @@ const QUESTION_BANK: QuestionDef[] = [
   },
   {
     id: 3,
+    category: 'Pace',
     question: 'Pace?',
     options: [
       { label: 'Fast', tag: 'fast', icon: '🎢' },
@@ -77,6 +81,7 @@ const QUESTION_BANK: QuestionDef[] = [
   },
   {
     id: 4,
+    category: 'Era',
     question: 'Which era?',
     options: [
       { label: '2020s', tag: 'era_2020s', icon: '✨' },
@@ -90,6 +95,7 @@ const QUESTION_BANK: QuestionDef[] = [
   },
   {
     id: 5,
+    category: 'Setting',
     question: 'Where is it set?',
     options: [
       { label: 'Space', tag: 'space', icon: '🚀' },
@@ -105,6 +111,7 @@ const QUESTION_BANK: QuestionDef[] = [
   },
   {
     id: 6,
+    category: 'Story',
     question: 'How should the story feel?',
     options: [
       { label: 'Twisty mystery', tag: 'complex', icon: '🧩' },
@@ -116,6 +123,7 @@ const QUESTION_BANK: QuestionDef[] = [
   },
   {
     id: 7,
+    category: 'Goal',
     question: 'Tonight I want to…',
     options: [
       { label: 'Laugh', tag: 'goal_laugh', icon: '😂' },
@@ -128,6 +136,7 @@ const QUESTION_BANK: QuestionDef[] = [
   },
   {
     id: 8,
+    category: 'Rating',
     question: 'Rating OK with?',
     options: [
       { label: 'G / PG', tag: 'rate_g', icon: '🟢' },
@@ -140,6 +149,7 @@ const QUESTION_BANK: QuestionDef[] = [
   },
   {
     id: 9,
+    category: 'Content',
     question: 'Content vibes?',
     options: [
       { label: 'No gore', tag: 'no_gore', icon: '🚫' },
@@ -153,6 +163,7 @@ const QUESTION_BANK: QuestionDef[] = [
   },
   {
     id: 10,
+    category: 'Mood',
     question: 'Overall mood?',
     options: [
       { label: 'Funny', tag: 'mood_funny', icon: '😄' },
@@ -166,6 +177,7 @@ const QUESTION_BANK: QuestionDef[] = [
   },
   {
     id: 11,
+    category: 'Lead',
     question: 'Who is the lead?',
     options: [
       { label: 'Boy / man', tag: 'lead_male', icon: '👨' },
@@ -179,6 +191,20 @@ const QUESTION_BANK: QuestionDef[] = [
     ],
   },
 ];
+
+/** After answering `afterStep`, go to the next unanswered — wrap to earlier gaps if you jumped ahead. */
+function nextUnansweredStep(
+  answered: Record<number, { label: string; tag: string }>,
+  afterStep: number
+): number | null {
+  for (let i = afterStep + 1; i < QUESTION_BANK.length; i++) {
+    if (answered[i] == null) return i;
+  }
+  for (let i = 0; i <= afterStep; i++) {
+    if (answered[i] == null) return i;
+  }
+  return null;
+}
 
 const GENRE_TMDB: Record<string, number> = {
   comedy: 35,
@@ -661,7 +687,7 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
     };
   }, [loadPoolForTags]);
 
-  const celebrateIfReady = (scored: Movie[], nextAnswers: Record<number, { label: string; tag: string }>, stepAfter: number) => {
+  const celebrateIfReady = (scored: Movie[], nextAnswers: Record<number, { label: string; tag: string }>) => {
     const n = Object.keys(nextAnswers).length;
     if (n < MIN_QS_BEFORE_FOUND) return false;
     if (scored.length === 0) return false;
@@ -669,9 +695,9 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
     const hardLeft = scored.filter((m) => hardPasses(m, Object.values(nextAnswers).map((a) => a.tag)));
     // Only celebrate when truly tiny — never because we under-fetched
     const tight = hardLeft.length > 0 && hardLeft.length <= FOUND_THRESHOLD && (catalogTotal ?? 999) <= 40;
-    const finishedBank = stepAfter >= QUESTION_BANK.length;
+    const allAnswered = n >= QUESTION_BANK.length;
 
-    if (tight || finishedBank) {
+    if (tight || allAnswered) {
       const winner = (tight ? hardLeft : scored)[0];
       setFoundMovie(winner);
       setVisibleCount(Math.max(PAGE_SIZE * 2, 48));
@@ -689,24 +715,29 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
     return false;
   };
 
+  const jumpToStep = (step: number) => {
+    setCurrentStep(Math.max(0, Math.min(QUESTION_BANK.length - 1, step)));
+    setFiltersOpen(true);
+  };
+
   const handleSelectOption = async (option: { label: string; tag: string }) => {
     const nextAnswers = { ...answers, [currentStep]: option };
     setAnswers(nextAnswers);
     const nextTags = Object.values(nextAnswers).map((a) => a.tag);
 
-    // Always refresh discover against the current tag combo (audience + genre + pace…)
-    // so counts reflect TMDb totals, not a tiny cached page dump.
     const scored = await loadPoolForTags(nextTags);
-    const nextStep = currentStep + 1;
 
-    if (celebrateIfReady(scored, nextAnswers, nextStep)) {
+    if (celebrateIfReady(scored, nextAnswers)) {
       return;
     }
 
-    if (nextStep < QUESTION_BANK.length) {
-      setCurrentStep(nextStep);
+    // Wizard: next unanswered after this one; if you jumped ahead, wrap to earlier gaps
+    const nxt = nextUnansweredStep(nextAnswers, currentStep);
+    if (nxt != null) {
+      setCurrentStep(nxt);
+      setFiltersOpen(true);
     } else {
-      celebrateIfReady(scored, nextAnswers, nextStep);
+      celebrateIfReady(scored, nextAnswers);
     }
   };
 
@@ -868,24 +899,50 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
 
   return (
     <div className="w-full h-[calc(100dvh-5rem)] max-h-[calc(100dvh-5rem)] overflow-hidden flex flex-col p-2 sm:p-3 gap-2">
-      {/* Thin progress */}
-      <div className="flex items-center gap-2 shrink-0">
-        <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider shrink-0">
+      {/* Category jump bar — wizard in order, or click any to jump */}
+      <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 min-w-0">
+        <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider shrink-0 hidden sm:inline">
           Matchmaker
         </span>
-        <div className="flex-1 h-1 bg-neutral-800 rounded-full overflow-hidden">
-          <div
-            className="h-full bg-amber-500 transition-all duration-300"
-            style={{ width: `${Math.min(100, ((currentStep + 1) / QUESTION_BANK.length) * 100)}%` }}
-          />
+        <div className="flex-1 min-w-0 overflow-x-auto no-scrollbar">
+          <div className="flex items-center gap-1 min-w-max pr-1">
+            {QUESTION_BANK.map((q, i) => {
+              const answered = answers[i] != null;
+              const active = currentStep === i;
+              return (
+                <button
+                  key={q.id}
+                  type="button"
+                  onClick={() => jumpToStep(i)}
+                  title={answered ? `${q.category}: ${answers[i].label}` : q.question}
+                  className={`text-[10px] sm:text-[11px] font-bold px-2 sm:px-2.5 py-1 rounded-lg border transition shrink-0 ${
+                    active
+                      ? 'bg-amber-500 text-neutral-950 border-amber-400'
+                      : answered
+                        ? 'bg-amber-500/15 text-amber-200 border-amber-500/35 hover:bg-amber-500/25'
+                        : 'bg-neutral-900 text-neutral-400 border-neutral-800 hover:border-neutral-600 hover:text-neutral-200'
+                  }`}
+                >
+                  {answered && !active ? (
+                    <span className="inline-flex items-center gap-1">
+                      <Check className="w-3 h-3" />
+                      {q.category}
+                    </span>
+                  ) : (
+                    q.category
+                  )}
+                </button>
+              );
+            })}
+          </div>
         </div>
-        <span className="text-[10px] font-mono text-neutral-400 shrink-0">
-          Q{Math.min(currentStep + 1, QUESTION_BANK.length)}/{QUESTION_BANK.length}
+        <span className="text-[10px] font-mono text-neutral-500 shrink-0 tabular-nums">
+          {answeredCount}/{QUESTION_BANK.length}
         </span>
         <button
           type="button"
           onClick={handleReset}
-          className="p-1 rounded-md text-neutral-500 hover:text-white"
+          className="p-1 rounded-md text-neutral-500 hover:text-white shrink-0"
           title="Start over"
         >
           <RotateCcw className="w-3.5 h-3.5" />
@@ -903,14 +960,16 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
           <SlidersHorizontal className="w-3.5 h-3.5 text-amber-400 shrink-0" />
           <span className="text-xs sm:text-sm font-bold text-white truncate flex-1">
             {filtersOpen
-              ? currentQ.question
+              ? `${currentQ.category} · ${currentQ.question}`
               : answeredCount > 0
                 ? `${answeredCount} filter${answeredCount === 1 ? '' : 's'} on · tap to ask more`
                 : 'Filters · tap to start'}
           </span>
-          {!filtersOpen && currentStep < QUESTION_BANK.length ? (
+          {!filtersOpen ? (
             <span className="hidden sm:inline text-[10px] text-amber-400/90 font-semibold shrink-0 truncate max-w-[10rem]">
-              Next: {QUESTION_BANK[currentStep].question}
+              {answers[currentStep]
+                ? `Edit: ${currentQ.category}`
+                : `Next: ${currentQ.category}`}
             </span>
           ) : null}
           {filtersOpen ? (
@@ -928,13 +987,11 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
                 <button
                   key={step}
                   type="button"
-                  onClick={() => {
-                    setCurrentStep(Number(step));
-                    setFiltersOpen(true);
-                  }}
+                  onClick={() => jumpToStep(Number(step))}
                   className="text-[10px] sm:text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-200 border border-amber-500/30 hover:bg-amber-500/25 transition"
-                  title={`Edit: ${QUESTION_BANK[Number(step)]?.question ?? ''}`}
+                  title={`Edit ${QUESTION_BANK[Number(step)]?.category ?? ''}`}
                 >
+                  <span className="text-amber-400/80 mr-1">{QUESTION_BANK[Number(step)]?.category}</span>
                   {a.label}
                 </button>
               ))}
@@ -949,7 +1006,7 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
               </h2>
               <div className="flex items-center gap-0.5 shrink-0">
                 <button
-                  onClick={() => setCurrentStep((p) => Math.max(0, p - 1))}
+                  onClick={() => jumpToStep(currentStep - 1)}
                   disabled={currentStep === 0}
                   className="p-1 rounded-md text-neutral-400 disabled:opacity-30"
                   aria-label="Back"
@@ -958,11 +1015,15 @@ export const TwentyQuestionsMode: React.FC<TwentyQuestionsModeProps> = ({
                   <ChevronLeft className="w-4 h-4" />
                 </button>
                 <button
-                  onClick={() => setCurrentStep((p) => Math.min(QUESTION_BANK.length - 1, p + 1))}
-                  disabled={currentStep >= QUESTION_BANK.length - 1}
-                  className="p-1 rounded-md text-neutral-400 disabled:opacity-30"
-                  aria-label="Skip"
+                  onClick={() => {
+                    const nxt = nextUnansweredStep(answers, currentStep);
+                    if (nxt != null) jumpToStep(nxt);
+                    else jumpToStep(Math.min(QUESTION_BANK.length - 1, currentStep + 1));
+                  }}
+                  className="p-1 rounded-md text-neutral-400"
+                  aria-label="Next unanswered"
                   type="button"
+                  title="Next unanswered"
                 >
                   <ChevronRight className="w-4 h-4" />
                 </button>
