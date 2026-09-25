@@ -102,6 +102,7 @@ export class TMDbClient {
     certificationLte?: string;
     certificationGte?: string;
     includeAdult?: boolean;
+    voteAverageGte?: number;
     voteCountGte?: number;
     voteCountLte?: number;
     watchProviderId?: number;
@@ -124,15 +125,23 @@ export class TMDbClient {
 
     if (options.sortBy) {
       url += `&sort_by=${options.sortBy}`;
+      // Prevent unreleased future movies when sorting by newest first
+      if (options.sortBy === 'primary_release_date.desc' && !options.yearLte) {
+        url += `&primary_release_date.lte=${today}`;
+      }
     } else {
       url += `&sort_by=popularity.desc`;
+    }
+
+    if (options.voteAverageGte != null) {
+      url += `&vote_average.gte=${options.voteAverageGte}`;
     }
 
     if (options.voteCountGte != null) {
       url += `&vote_count.gte=${options.voteCountGte}`;
     } else if (
-      options.sortBy &&
-      (options.sortBy.includes('vote_average') || options.sortBy.includes('vote_count'))
+      options.voteAverageGte != null ||
+      (options.sortBy && (options.sortBy.includes('vote_average') || options.sortBy.includes('vote_count')))
     ) {
       url += `&vote_count.gte=100`;
     }

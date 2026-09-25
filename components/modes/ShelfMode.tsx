@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Heart, Bookmark, Compass, Search, Flame, Award, TrendingUp, Loader2, Sparkles, ArrowUpDown, Calendar, X, Check, Disc, Ticket, Eye, Clapperboard } from 'lucide-react';
+import { Heart, Bookmark, Compass, Search, Flame, Award, TrendingUp, Loader2, Sparkles, ArrowUpDown, Calendar, X, Check, Disc, Ticket, Eye, Clapperboard, Star } from 'lucide-react';
 import { Movie, ReleaseFormat } from '@/lib/tmdb/types';
 import { tmdb, GENRE_NAME_TO_ID } from '@/lib/tmdb/client';
 import { MovieCard } from '../movie/MovieCard';
@@ -30,6 +30,7 @@ interface ShelfModeProps {
 type TabType = 'trending' | 'popular' | 'netflix' | 'top_rated' | 'curated' | 'loved' | 'watchlist';
 type SortOption = 'popularity.desc' | 'vote_average.desc' | 'primary_release_date.desc' | 'primary_release_date.asc' | 'title.asc';
 type YearOption = 'All' | '2020s' | '2010s' | '2000s' | '1990s' | '1980s' | '1970s' | 'classics';
+type RatingOption = 'all' | '7.0' | '7.5' | '8.0';
 
 type TheatricalFilter = 'all' | 'hide_theatres' | 'theatres_only';
 type WatchedFilter = 'all' | 'hide_watched' | 'watched_only';
@@ -69,6 +70,7 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
   const [selectedGenre, setSelectedGenre] = useState<string>('All');
   const [sortBy, setSortBy] = useState<SortOption>('popularity.desc');
   const [selectedYear, setSelectedYear] = useState<YearOption>('All');
+  const [selectedRating, setSelectedRating] = useState<RatingOption>('all');
 
   // Dynamic TMDb state
   const [liveMovies, setLiveMovies] = useState<Movie[]>([]);
@@ -140,13 +142,14 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
     }
   };
 
-  // Fetch movies from TMDb according to active tab, sort, genre, year, theatre filter or search
+  // Fetch movies from TMDb according to active tab, sort, genre, year, rating, theatre filter or search
   const fetchMovies = useCallback(async (
     tab: TabType,
     query: string,
     genre: string,
     sort: SortOption,
     era: YearOption,
+    rating: RatingOption,
     tf: TheatricalFilter,
     pageNum: number = 1,
     append: boolean = false
@@ -163,9 +166,18 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
 
     try {
       let data: { results: Movie[]; totalPages: number };
+      const isDefaultTopRated = tab === 'top_rated' && sort === 'popularity.desc' && genre === 'All' && era === 'All' && tf === 'all' && rating === 'all';
+      const minRating = rating !== 'all' ? parseFloat(rating) : (tab === 'top_rated' && !isDefaultTopRated ? 7.0 : undefined);
+
       if (query.trim()) {
         data = await tmdb.searchMoviesPaged(query, pageNum, tf === 'theatres_only' ? 'theatrical' : 'all');
-      } else if (sort !== 'popularity.desc' || genre !== 'All' || era !== 'All' || tf === 'theatres_only') {
+      } else if (
+        sort !== 'popularity.desc' ||
+        genre !== 'All' ||
+        era !== 'All' ||
+        tf === 'theatres_only' ||
+        minRating !== undefined
+      ) {
         const boundaries = getYearBoundaries(era);
         const genreId = genre !== 'All' ? GENRE_NAME_TO_ID[genre] : undefined;
         data = await tmdb.discoverMovies({
@@ -174,6 +186,8 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
           genreId,
           yearGte: boundaries.yearGte,
           yearLte: boundaries.yearLte,
+          voteAverageGte: minRating,
+          voteCountGte: minRating !== undefined ? 100 : undefined,
           watchProviderId: tab === 'netflix' ? 8 : undefined,
           releaseFormat: tf === 'theatres_only' ? 'theatrical' : undefined,
         });
@@ -206,12 +220,12 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
     }
   }, []);
 
-  // When tab, sort, genre, year, or theatrical filter changes, reset page and fetch
+  // When tab, sort, genre, year, rating, or theatrical filter changes, reset page and fetch
   useEffect(() => {
     if (activeTab !== 'curated' && activeTab !== 'loved' && activeTab !== 'watchlist') {
-      fetchMovies(activeTab, searchQuery, selectedGenre, sortBy, selectedYear, theatricalFilter, 1, false);
+      fetchMovies(activeTab, searchQuery, selectedGenre, sortBy, selectedYear, selectedRating, theatricalFilter, 1, false);
     }
-  }, [activeTab, selectedGenre, sortBy, selectedYear, theatricalFilter, fetchMovies]);
+  }, [activeTab, selectedGenre, sortBy, selectedYear, selectedRating, theatricalFilter, fetchMovies]);
 
   // Enrich curated movies on mount/tab change
   useEffect(() => {
@@ -228,7 +242,7 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
         setSearchedQuery('');
         if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
         if (activeTab !== 'loved' && activeTab !== 'watchlist') {
-          fetchMovies(activeTab, '', selectedGenre, sortBy, selectedYear, theatricalFilter, 1, false);
+          fetchMovies(activeTab, '', selectedGenre, sortBy, selectedYear, selectedRating, theatricalFilter, 1, false);
         }
       } else {
         handleSearchChange(externalSearchQuery, false);
@@ -247,7 +261,7 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
       if (activeTab === 'curated') {
         setActiveTab('trending');
       }
-      fetchMovies(activeTab === 'curated' ? 'trending' : activeTab, clean, selectedGenre, sortBy, selectedYear, theatricalFilter, 1, false);
+      fetchMovies(activeTab === 'curated' ? 'trending' : activeTab, clean, selectedGenre, sortBy, selectedYear, selectedRating, theatricalFilter, 1, false);
     } else {
       clearSearch();
     }
@@ -263,7 +277,7 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
       clearTimeout(searchTimeoutRef.current);
     }
     if (activeTab !== 'loved' && activeTab !== 'watchlist') {
-      fetchMovies(activeTab, '', selectedGenre, sortBy, selectedYear, theatricalFilter, 1, false);
+      fetchMovies(activeTab, '', selectedGenre, sortBy, selectedYear, selectedRating, theatricalFilter, 1, false);
     }
   };
 
@@ -281,7 +295,7 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
     if (!clean) {
       setSearchedQuery('');
       if (activeTab !== 'loved' && activeTab !== 'watchlist') {
-        fetchMovies(activeTab, '', selectedGenre, sortBy, selectedYear, theatricalFilter, 1, false);
+        fetchMovies(activeTab, '', selectedGenre, sortBy, selectedYear, selectedRating, theatricalFilter, 1, false);
       }
       return;
     }
@@ -291,15 +305,15 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
       if (activeTab === 'curated') {
         setActiveTab('trending');
       }
-      fetchMovies(activeTab === 'curated' ? 'trending' : activeTab, clean, selectedGenre, sortBy, selectedYear, theatricalFilter, 1, false);
+      fetchMovies(activeTab === 'curated' ? 'trending' : activeTab, clean, selectedGenre, sortBy, selectedYear, selectedRating, theatricalFilter, 1, false);
     }, 400);
   };
 
   // Next page loader
   const handleLoadMore = useCallback(() => {
     if (isLoadingMore || isLoading || page >= totalPages) return;
-    fetchMovies(activeTab, searchQuery, selectedGenre, sortBy, selectedYear, theatricalFilter, page + 1, true);
-  }, [isLoadingMore, isLoading, page, totalPages, activeTab, searchQuery, selectedGenre, sortBy, selectedYear, theatricalFilter, fetchMovies]);
+    fetchMovies(activeTab, searchQuery, selectedGenre, sortBy, selectedYear, selectedRating, theatricalFilter, page + 1, true);
+  }, [isLoadingMore, isLoading, page, totalPages, activeTab, searchQuery, selectedGenre, sortBy, selectedYear, selectedRating, theatricalFilter, fetchMovies]);
 
   // Infinite Auto-Lazy Loading via IntersectionObserver
   useEffect(() => {
@@ -345,7 +359,15 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
     if (watchedFilter === 'hide_watched' && isWatched) return false;
     if (watchedFilter === 'watched_only' && !isWatched) return false;
 
+    // Rating filter across search results and local tabs
+    if (selectedRating !== 'all') {
+      const minR = parseFloat(selectedRating);
+      if ((m.vote_average || 0) < minR) return false;
+    }
+
     if (activeTab === 'curated' || activeTab === 'loved' || activeTab === 'watchlist') {
+      if (activeTab === 'top_rated' && selectedRating === 'all' && (m.vote_average || 0) < 7.0) return false;
+
       const matchesQuery =
         !searchQuery ||
         m.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -372,7 +394,10 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
     return true;
   }).sort((a, b) => {
     if (sortBy === 'vote_average.desc') return (b.vote_average || 0) - (a.vote_average || 0);
-    if (sortBy === 'primary_release_date.desc') return (b.release_date || '').localeCompare(a.release_date || '');
+    if (sortBy === 'primary_release_date.desc') {
+      const dateCompare = (b.release_date || '').localeCompare(a.release_date || '');
+      return dateCompare !== 0 ? dateCompare : (b.vote_average || 0) - (a.vote_average || 0);
+    }
     if (sortBy === 'primary_release_date.asc') return (a.release_date || '').localeCompare(b.release_date || '');
     if (sortBy === 'title.asc') return a.title.localeCompare(b.title);
     return 0;
@@ -642,16 +667,18 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
         </div>
       )}
 
-      {/* Controls Bar: Sort, Era, Theatres, Seen (Compact 2-row on mobile, 1-row on desktop) */}
-      <div className="mb-3 p-2 rounded-xl bg-neutral-900/60 border border-neutral-800/80 flex flex-col md:flex-row md:items-center md:justify-between gap-2">
-        {/* Mobile Row 1 / Desktop Left: Sort & Era dropdowns side-by-side */}
-        <div className="grid grid-cols-2 gap-2 md:flex md:items-center md:gap-3">
-          <div className="flex items-center gap-1.5 text-xs text-neutral-400 min-w-0">
+      {/* Controls Bar: Sort, Rating, Era, Theatres, Seen */}
+      <div className="mb-3 p-2 rounded-xl bg-neutral-900/60 border border-neutral-800/80 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2">
+        {/* Left: Sort, Rating & Era dropdowns */}
+        <div className="grid grid-cols-3 gap-1.5 sm:flex sm:items-center sm:gap-2.5">
+          {/* Sort Dropdown */}
+          <div className="flex items-center gap-1 text-xs text-neutral-400 min-w-0">
             <ArrowUpDown className="w-3.5 h-3.5 text-amber-400 shrink-0 hidden sm:inline" />
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as SortOption)}
-              className="w-full md:w-auto bg-neutral-950 border border-neutral-800 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500 font-medium truncate"
+              className="w-full sm:w-auto bg-neutral-950 border border-neutral-800 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500 font-medium truncate"
+              title="Order movies by"
             >
               <option value="popularity.desc">🔥 Most Popular</option>
               <option value="vote_average.desc">⭐ Highest Rating</option>
@@ -661,12 +688,34 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
             </select>
           </div>
 
-          <div className="flex items-center gap-1.5 text-xs text-neutral-400 min-w-0">
+          {/* Rating Quality Filter Dropdown */}
+          <div className="flex items-center gap-1 text-xs text-neutral-400 min-w-0">
+            <Star className="w-3.5 h-3.5 text-amber-400 shrink-0 hidden sm:inline fill-amber-400/20" />
+            <select
+              value={selectedRating}
+              onChange={(e) => setSelectedRating(e.target.value as RatingOption)}
+              className={`w-full sm:w-auto bg-neutral-950 border rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-amber-500 font-medium truncate ${
+                selectedRating !== 'all' || activeTab === 'top_rated'
+                  ? 'border-amber-500/50 text-amber-300'
+                  : 'border-neutral-800 text-white'
+              }`}
+              title="Filter by minimum rating"
+            >
+              <option value="all">{activeTab === 'top_rated' ? '⭐ 7.0+ (Top Rated)' : '⭐ Any Rating'}</option>
+              <option value="7.0">⭐ 7.0+ Great</option>
+              <option value="7.5">⭐ 7.5+ Top Rated</option>
+              <option value="8.0">⭐ 8.0+ Masterpieces</option>
+            </select>
+          </div>
+
+          {/* Era / Year Dropdown */}
+          <div className="flex items-center gap-1 text-xs text-neutral-400 min-w-0">
             <Calendar className="w-3.5 h-3.5 text-amber-400 shrink-0 hidden sm:inline" />
             <select
               value={selectedYear}
               onChange={(e) => setSelectedYear(e.target.value as YearOption)}
-              className="w-full md:w-auto bg-neutral-950 border border-neutral-800 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500 font-medium truncate"
+              className="w-full sm:w-auto bg-neutral-950 border border-neutral-800 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500 font-medium truncate"
+              title="Filter by era"
             >
               {years.map((y) => (
                 <option key={y.value} value={y.value}>
@@ -677,8 +726,8 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
           </div>
         </div>
 
-        {/* Mobile Row 2 / Desktop Right: Theatres & Seen Toggles side-by-side */}
-        <div className="grid grid-cols-2 gap-2 md:flex md:items-center md:gap-3">
+        {/* Right: Theatres & Seen Toggles side-by-side */}
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:gap-2.5">
           {/* Theatres filter toggle (All / Off / Only) */}
           <div className="flex items-center justify-between md:justify-start gap-1 text-xs">
             <span className="text-neutral-400 font-semibold flex items-center gap-1 text-[11px] shrink-0" title="Theatres filter">
