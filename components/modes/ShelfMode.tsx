@@ -406,8 +406,6 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
     }
 
     if (activeTab === 'curated' || activeTab === 'loved' || activeTab === 'watchlist') {
-      if (activeTab === 'top_rated' && selectedRating === 'all' && (m.vote_average || 0) < 7.0) return false;
-
       const matchesQuery =
         !searchQuery ||
         m.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
