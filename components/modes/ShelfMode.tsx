@@ -28,8 +28,8 @@ interface ShelfModeProps {
 }
 
 type TabType = 'trending' | 'popular' | 'netflix' | 'top_rated' | 'curated' | 'loved' | 'watchlist';
-type SortOption = 'popularity.desc' | 'vote_average.desc' | 'primary_release_date.desc' | 'primary_release_date.asc' | 'title.asc';
-type YearOption = 'All' | '2020s' | '2010s' | '2000s' | '1990s' | '1980s' | '1970s' | 'classics';
+type SortOption = 'popularity.desc' | 'best_recent' | 'vote_average.desc' | 'primary_release_date.desc' | 'primary_release_date.asc' | 'title.asc';
+type YearOption = 'All' | 'recent' | '2020s' | '2010s' | '2000s' | '1990s' | '1980s' | '1970s' | 'classics';
 type RatingOption = 'all' | '7.0' | '7.5' | '8.0';
 
 type TheatricalFilter = 'all' | 'hide_theatres' | 'theatres_only';
@@ -82,6 +82,7 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
   const genres = ['All', 'Action', 'Sci-Fi', 'Drama', 'Thriller', 'Comedy', 'Horror', 'Animation', 'Adventure', 'Mystery', 'Crime', 'Romance', 'Fantasy', 'Western'];
   const years: { label: string; value: YearOption }[] = [
     { label: 'All Years', value: 'All' },
+    { label: '🌟 Recent (Past 2 Years)', value: 'recent' },
     { label: '2020s (Modern)', value: '2020s' },
     { label: '2010s', value: '2010s' },
     { label: '2000s', value: '2000s' },
@@ -96,7 +97,13 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
 
   // Compute Year Boundaries
   const getYearBoundaries = (era: YearOption) => {
+    const today = new Date().toISOString().split('T')[0];
+    const d = new Date();
+    d.setFullYear(d.getFullYear() - 2);
+    const twoYearsAgo = d.toISOString().split('T')[0];
+
     switch (era) {
+      case 'recent': return { yearGte: twoYearsAgo, yearLte: today };
       case '2020s': return { yearGte: '2020-01-01', yearLte: '2029-12-31' };
       case '2010s': return { yearGte: '2010-01-01', yearLte: '2019-12-31' };
       case '2000s': return { yearGte: '2000-01-01', yearLte: '2009-12-31' };
@@ -166,8 +173,31 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
 
     try {
       let data: { results: Movie[]; totalPages: number };
+      const isBestRecent = sort === 'best_recent';
+      const effectiveSort = isBestRecent ? 'vote_average.desc' : sort;
+
       const isDefaultTopRated = tab === 'top_rated' && sort === 'popularity.desc' && genre === 'All' && era === 'All' && tf === 'all' && rating === 'all';
-      const minRating = rating !== 'all' ? parseFloat(rating) : (tab === 'top_rated' && !isDefaultTopRated ? 7.0 : undefined);
+      
+      let minRating: number | undefined = undefined;
+      if (rating !== 'all') {
+        minRating = parseFloat(rating);
+      } else if (isBestRecent) {
+        minRating = 7.0;
+      } else if (tab === 'top_rated' && !isDefaultTopRated) {
+        minRating = 7.0;
+      }
+
+      const boundaries = getYearBoundaries(era);
+      if (isBestRecent && !boundaries.yearGte) {
+        const d = new Date();
+        d.setFullYear(d.getFullYear() - 2);
+        boundaries.yearGte = d.toISOString().split('T')[0];
+        boundaries.yearLte = new Date().toISOString().split('T')[0];
+      }
+
+      const voteCountFloor = (isBestRecent || minRating !== undefined || effectiveSort.includes('vote_average'))
+        ? 150
+        : (effectiveSort === 'primary_release_date.desc' ? 50 : undefined);
 
       if (query.trim()) {
         data = await tmdb.searchMoviesPaged(query, pageNum, tf === 'theatres_only' ? 'theatrical' : 'all');
@@ -176,18 +206,18 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
         genre !== 'All' ||
         era !== 'All' ||
         tf === 'theatres_only' ||
-        minRating !== undefined
+        minRating !== undefined ||
+        isBestRecent
       ) {
-        const boundaries = getYearBoundaries(era);
         const genreId = genre !== 'All' ? GENRE_NAME_TO_ID[genre] : undefined;
         data = await tmdb.discoverMovies({
           page: pageNum,
-          sortBy: sort,
+          sortBy: effectiveSort,
           genreId,
           yearGte: boundaries.yearGte,
           yearLte: boundaries.yearLte,
           voteAverageGte: minRating,
-          voteCountGte: minRating !== undefined ? 100 : undefined,
+          voteCountGte: voteCountFloor,
           watchProviderId: tab === 'netflix' ? 8 : undefined,
           releaseFormat: tf === 'theatres_only' ? 'theatrical' : undefined,
         });
@@ -365,6 +395,16 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
       if ((m.vote_average || 0) < minR) return false;
     }
 
+    // Best Recent filter across local lists
+    if (sortBy === 'best_recent') {
+      const d = new Date();
+      d.setFullYear(d.getFullYear() - 2);
+      const twoYearsAgo = d.toISOString().split('T')[0];
+      if ((m.release_date || '') < twoYearsAgo) return false;
+      const minR = selectedRating !== 'all' ? parseFloat(selectedRating) : 7.0;
+      if ((m.vote_average || 0) < minR) return false;
+    }
+
     if (activeTab === 'curated' || activeTab === 'loved' || activeTab === 'watchlist') {
       if (activeTab === 'top_rated' && selectedRating === 'all' && (m.vote_average || 0) < 7.0) return false;
 
@@ -379,7 +419,12 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
 
       let matchesYear = true;
       const yr = parseInt(m.release_date?.slice(0, 4) || '0', 10);
-      if (selectedYear === '2020s') matchesYear = yr >= 2020;
+      if (selectedYear === 'recent') {
+        const d = new Date();
+        d.setFullYear(d.getFullYear() - 2);
+        matchesYear = (m.release_date || '') >= d.toISOString().split('T')[0];
+      }
+      else if (selectedYear === '2020s') matchesYear = yr >= 2020;
       else if (selectedYear === '2010s') matchesYear = yr >= 2010 && yr <= 2019;
       else if (selectedYear === '2000s') matchesYear = yr >= 2000 && yr <= 2009;
       else if (selectedYear === '1990s') matchesYear = yr >= 1990 && yr <= 1999;
@@ -393,7 +438,7 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
     // For live tabs, API handles search and discover filters
     return true;
   }).sort((a, b) => {
-    if (sortBy === 'vote_average.desc') return (b.vote_average || 0) - (a.vote_average || 0);
+    if (sortBy === 'vote_average.desc' || sortBy === 'best_recent') return (b.vote_average || 0) - (a.vote_average || 0);
     if (sortBy === 'primary_release_date.desc') {
       const dateCompare = (b.release_date || '').localeCompare(a.release_date || '');
       return dateCompare !== 0 ? dateCompare : (b.vote_average || 0) - (a.vote_average || 0);
@@ -681,6 +726,7 @@ export const ShelfMode: React.FC<ShelfModeProps> = ({
               title="Order movies by"
             >
               <option value="popularity.desc">🔥 Most Popular</option>
+              <option value="best_recent">🌟 Best Recent (Top Rated)</option>
               <option value="vote_average.desc">⭐ Highest Rating</option>
               <option value="primary_release_date.desc">📅 Newest First</option>
               <option value="primary_release_date.asc">🎞️ Oldest First</option>
